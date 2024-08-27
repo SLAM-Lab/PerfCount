@@ -1,9 +1,9 @@
 import argparse
 import pandas
 
-def parse_csv(input1, index, output1, output2):
+def parse_csv(input_list, index, output):
     # Using readlines()
-    input_file= open(input1, 'r')
+    input_file= open(input_list, 'r')
     csv_files = input_file.readlines()
 
     merged_df = pandas.read_csv('blank.csv')
@@ -11,12 +11,6 @@ def parse_csv(input1, index, output1, output2):
 
     for csv in csv_files:
         csv = csv.strip()
-        with open(csv, 'r+') as fp:
-            lines = fp.readlines()
-            fp.seek(0)
-            fp.writelines('time,value,,counter,,,,\n')
-            fp.writelines(lines[2:])
-
         # read the csv file
         df1 = pandas.read_csv(csv)
         df1['time'] = df1['time'].astype(float).round(2) #.round({'time':2})
@@ -51,40 +45,29 @@ def parse_csv(input1, index, output1, output2):
             merged_df = pandas.merge(merged_df, df5, on = 'time', how = 'inner')
             initial_read = 1
         else:
-#            df5.drop(df5.columns['instruction'], axis=1, inplace=True)
             df5 = df5.drop(columns=['instruction'])
-#            merged_df = merged_df.append(df5, ignore_index=True)
-#            frames = [merged_df, df5]
-#            merged_df = pd.concat(frames)
-
             merged_df = pandas.merge(merged_df, df5, on = 'time', how = 'inner')
         print(merged_df)
 
 
-        df3.to_csv(output1, sep=',', index=False)
-        df4.to_csv(output2, sep=',', index=False)
-
-        merged_df.to_csv('merge.txt', sep=',', index=False)
+        merged_df.to_csv(output, sep=',', index=False)
 
     
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input-1', type=str, default="",
+    parser.add_argument('--input-list', type=str, default="",
                         help='csv to read from')
     parser.add_argument('--num-counters', type=int, default='',
                         help='number of perf counters collected')
-    parser.add_argument('--output-1', type=str, default='',
-                        help='Name of output file')
-    parser.add_argument('--output-2', type=str, default='',
+    parser.add_argument('--output', type=str, default='',
                         help='Name of output file')
 
     args = parser.parse_args()
-    input1 = args.input_1
-    output1 = args.output_1
-    output2 = args.output_2
+    input_list = args.input_list
+    output = args.output
     num_counters = args.num_counters
 
-    parse_csv(input1, num_counters, output1, output2)
+    parse_csv(input_list, num_counters, output)
 
 if __name__ == '__main__':
     main() 
