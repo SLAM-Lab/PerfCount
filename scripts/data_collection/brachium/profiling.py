@@ -5,8 +5,6 @@ import time
 
 if __name__ == "__main__":
     benchmarks = [
-#                623, 625, 631, 641, 648, 657, 
-#                603, 607, 619, 621, 627, 628, 638, 644, 649, 654,
                 500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
                 503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554]
     perf_events = [
@@ -24,16 +22,10 @@ if __name__ == "__main__":
                 "instructions,l3d_cache,l3d_cache_rd",
                 "instructions,mem_access,mem_access_rd,mem_access_wr" 
                 ]
-#br_pred,br_mis_pred",
-#        "L1-dcache-load-misses,L1-dcache-loads,L1-icache-load-misses,L1-icache-loads",
-#        "l2d_cache,l2d_cache_rd,l3d_cache,l3d_cache_rd",
-#        "vfp_spec,mem_access,mem_access_rd",
-#        "stall_backend,stall_frontend"
-#    ]
 
     sample_period = [10]
     cpus = [0]
-    freqs = ['3.00GHz']
+    freqs = ['1.50GHz']
 
     for cpu in cpus:
         for freq in freqs:
