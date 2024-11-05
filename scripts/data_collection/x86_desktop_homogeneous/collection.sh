@@ -1,5 +1,4 @@
-cpupower frequency-set --max 1.50GHz
-cpupower frequency-set -g performance
+sleep 10    
 taskset --cpu-list 0 perf stat -I 10 -e instructions,cpu-cycles,br_inst_retired.all_branches_pebs,br_misp_retired.all_branches_pebs -o cpu_0_freq_1.50GHz_epoch_10_500_0 -x, runcpu --config=matthew-2 500
 taskset --cpu-list 0 perf stat -I 10 -e instructions,L1-dcache-load-misses,L1-dcache-loads,L1-dcache-stores -o cpu_0_freq_1.50GHz_epoch_10_500_1 -x, runcpu --config=matthew-2 500
 taskset --cpu-list 0 perf stat -I 10 -e instructions,L1-icache-load-misses,LLC-load-misses,LLC-loads -o cpu_0_freq_1.50GHz_epoch_10_500_2 -x, runcpu --config=matthew-2 500

@@ -33,7 +33,7 @@ if __name__ == "__main__":
                         command += ' -e ' + str(events)
                         command += ' -o cpu_' + str(cpu) + '_freq_' + str(freq) + '_epoch_' + str(epoch) + '_' + str(benchmark) + '_' + str(count)
                         command += ' -x,'
-                        command += " runcpu --config=matthew-2 " + str(benchmark)
+                        command += " runcpu --config=matthew-1cpu " + str(benchmark)
                         print(command)
                         count += 1
 
