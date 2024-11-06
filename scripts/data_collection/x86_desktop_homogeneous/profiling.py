@@ -8,7 +8,7 @@ if __name__ == "__main__":
                 500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
                 503, 507, 508, 510, 511, 519, 521, 527, 538, 544, 549, 554]
     perf_events = [
-                "instructions,cpu-cycles,br_inst_retired.all_branches_pebs,br_misp_retired.all_branches_pebs,",
+                "instructions,cpu-cycles,br_inst_retired.all_branches_pebs,br_misp_retired.all_branches_pebs",
                 "instructions,L1-dcache-load-misses,L1-dcache-loads,L1-dcache-stores",
                 "instructions,L1-icache-load-misses,LLC-load-misses,LLC-loads",
                 "instructions,LLC-store-misses,LLC-stores,fp_arith_inst_retired.scalar_single",
@@ -24,8 +24,6 @@ if __name__ == "__main__":
 
     for cpu in cpus:
         for freq in freqs:
-            print('cpupower frequency-set --max ' + str(freq))
-            print('cpupower frequency-set -g performance')
             for epoch in sample_period:
                 for benchmark in benchmarks:
                     count = 0

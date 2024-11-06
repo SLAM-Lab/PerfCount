@@ -7,26 +7,25 @@ if __name__ == "__main__":
     benchmarks = [
                 500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
                 503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554]
-
     perf_events = [
-                "instructions,cpu-cycles,br_misp_retired.all_branches,br_inst_retired.all_branches",
-                "instructions,L1-dcache-loads-misses,L1-dcache-loads,L1-dcache-stores",
-                "instructions,branch-load-misses,branch-loads,dTLB-stores",
-                "instructions,dTLB-load-misses,dTLB-loads,dTLB-store-misses",
-                "instructions,iTLB-load-misses,l2_request.all,l2_request.miss",
-                "instructions,mem_store_retired.l2_hit,LLC-load-misses",
-                "instructions,LLC-loads,LLC-store-misses,LLC-stores",
-                "instructions,mem-loads,mem-stores,context-switches"
+                "instructions,cpu-cycles,br_pred,br_mis_pred",
+                "instructions,l1d_cache,l1d_cache_rd,l1d_cache_wr",
+                "instructions,l1d_cache_refill,l1d_cache_refill_wr,l1d_cache_refill_rd",
+                "instructions,l1d_tlb_refill,l1d_tlb_refill_rd,l1d_tlb_refill_wr",
+                "instructions,l1i_cache,l1i_cache_refill,l1i_tlb_refill",
+                "instructions,l2d_cache,l2d_cache_rd,l2d_cache_wr",
+                "instructions,l2d_cache_refill,l2d_cache_refill_rd,l2d_cache_refill_wr",
+                "instructions,mem_access,mem_access_rd,mem_access_wr"
+
+
                 ]
 
     sample_period = [10]
     cpus = [0]
-    freqs = ['3.00GHz']
+    freqs = ['1.5GHz']
 
     for cpu in cpus:
         for freq in freqs:
-            print('cpupower frequency-set --max ' + str(freq))
-            print('cpupower frequency-set -g performance')
             for epoch in sample_period:
                 for benchmark in benchmarks:
                     count = 0
@@ -39,4 +38,6 @@ if __name__ == "__main__":
                         command += " runcpu --config=matthew-1cpu " + str(benchmark)
                         print(command)
                         count += 1
+
+
 
