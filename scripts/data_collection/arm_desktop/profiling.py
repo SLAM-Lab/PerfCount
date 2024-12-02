@@ -25,22 +25,16 @@ if __name__ == "__main__":
         "instructions,mem_access,mem_access_rd,mem_access_wr",
     ]
 
-    sample_period = [10]
-    cpus = [0]
-    freqs = ['1.50GHz']
-
-    for cpu in cpus:
-        for freq in freqs:
-            for epoch in sample_period:
-                for benchmark in benchmarks:
-                    counter = 0
-                    for events in perf_events:
-                        command  = "taskset --cpu-list " + str(cpu)
-                        command += ' perf stat -I ' + str(epoch)
-                        command += ' -e ' + str(events)
-                        command += ' -o cpu_' + str(cpu) + '_freq_' + str(freq) + '_epoch_' + str(epoch) + '_' + str(benchmark) + '_' + str(counter)
-                        command += ' -x,'
-                        command += " runcpu --config=matthew-1cpu " + str(benchmark)
-                        print(command)
-                        counter += 1
+    freq = ['3.0GHz']
+    for benchmark in benchmarks:
+        counter = 0
+        for events in perf_events:
+            command  = "taskset --cpu-list 0"
+            command += ' perf stat -I 10'
+            command += ' -e ' + str(events)
+            command += ' -o arm_desktop_' + str(freq) + '_' + str(benchmark) + '_' + str(counter)
+            command += ' -x,'
+            command += " runcpu --config=matthew-1cpu " + str(benchmark)
+            print(command)
+            counter += 1
 
