@@ -135,22 +135,25 @@ def get_df_without_per_core(file_location):
         file_location,
         comment='#',
         header=None,
-        names=['timestamp','value','unit','counter', 'unknown1', 'unknown2','IPC','IPC2'],
+        # names=['timestamp','value','unit','counter', 'unknown1', 'unknown2','IPC','IPC2'],
     )
+    df = df.rename(columns = {0 : 'timestamp', 1 :'value', 2 : 'unit', 3 : 'counter'})
     df = df.replace('<not supported>', pd.NA, regex=False)
     df = df.replace('<not counted>', pd.NA, regex=False)
-    df = df.dropna(how='all', axis=1)
-    if 'IPC' in df.columns.values:
-        ipc = df.groupby(['timestamp'])[['IPC']].mean().stack()
-    else:
-        print('Error: IPC column not found')
-        return pd.DataFrame()
+    df = df.replace('<NA>', pd.NA, regex=False)
+    df = df.dropna(how='all', axis=1).dropna(subset=['value']).astype({'value' : int})
+    # if 'IPC' in df.columns.values:
+    #     ipc = df.groupby(['timestamp'])[['IPC']].mean().stack()
+    # else:
+    #     print('Error: IPC column not found')
+    #     return pd.DataFrame()
+    # print(df)
     if 'value' in df.columns.values and 'counter' in df.columns.values:
         counters = df.groupby(['timestamp', 'counter'])['value'].mean()
     else:
         print('Error: Counter values columns not found')
         return pd.DataFrame()
-    return pd.concat([counters, ipc]).sort_index().unstack()
+    return counters.sort_index().unstack()
 
 def get_perf_df_per_core(file_location):
     df = pd.read_csv(
