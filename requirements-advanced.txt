@@ -1,0 +1,21 @@
+# Advanced dependencies for PerfCount cross-platform prediction
+# Install these for full functionality including GPU acceleration
+
+# Advanced boosting libraries
+xgboost>=1.6.0
+catboost>=1.1.0
+lightgbm>=3.3.0
+
+# Deep learning and GPU acceleration (Apple Silicon MPS support)
+torch>=1.12.0
+torchvision>=0.13.0
+
+# Enhanced visualization
+seaborn>=0.11.0
+
+# Statistical analysis
+statsmodels>=0.13.0
+
+# Performance monitoring
+psutil>=5.9.0
+memory-profiler>=0.60.0
