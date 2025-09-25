@@ -6,9 +6,8 @@ import time
 if __name__ == "__main__":
     # SPEC 2017 benchmarks
     spec_benchmarks = [
-#        502, 505
          500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
-         503, 507, 508, 510, 511, 519, 521, 527, 538, 544, 549, 554
+         503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
     ]
     
     # DaCapo benchmarks
@@ -76,11 +75,12 @@ if __name__ == "__main__":
 
     # Combine all groups for easy iteration
     arm_groups = [
-        arm_group0, arm_group1, arm_group2, arm_group3,
-        arm_group4, arm_group5, arm_group6, arm_group7,
-        arm_group8, arm_group9, arm_group10, arm_group11,
-        arm_group12, arm_group13, arm_group14, arm_group15,
-        arm_group16, arm_group17, arm_group18
+        arm_group0
+#        arm_group0, arm_group1, arm_group2, arm_group3,
+#        arm_group4, arm_group5, arm_group6, arm_group7,
+#        arm_group8, arm_group9, arm_group10, arm_group11,
+#        arm_group12, arm_group13, arm_group14, arm_group15,
+#        arm_group16, arm_group17, arm_group18
     ]
 
     # ARM server configuration
@@ -102,20 +102,24 @@ if __name__ == "__main__":
     # - --no-buffering: Disables internal buffering for immediate sample writing
     # - taskset --cpu-list: Pins process to specific CPU core for consistent execution
     
-    for cpu in cpus:
-        for benchmark in spec_benchmarks:
-            for granularity in granularities:
-                count = 0
-                for events in arm_groups:
-                    command  = "perf record -a -C " + str(cpu)
-                    command += " -e " + str(events)
-                    command += " -c " + str(granularity)
-                    command += " --no-buffering"
-                    command += " -o cpu_" + str(cpu) + "_" + str(freq) + "_spec_" + str(benchmark) + "_" + str(granularity) + "_" + str(count) + ".out"
-                    command += " taskset --cpu-list " + str(cpu)
-                    command += " bash -c 'cd " + spec_dir + " && source shrc && runcpu -c base --config=matthew-1cpu " + str(benchmark) + "'"
-                    print(command)
-                    count += 1
+    # Triple redundancy: perform each collection 3 times
+    redundancy_runs = [1, 2, 3]
+    
+    for redundancy in redundancy_runs:
+        for cpu in cpus:
+            for benchmark in spec_benchmarks:
+                for granularity in granularities:
+                    count = 0
+                    for events in arm_groups:
+                        command  = "perf record -a -C " + str(cpu)
+                        command += " -e " + str(events)
+                        command += " -c " + str(granularity)
+                        command += " --no-buffering"
+                        command += " -o cpu_" + str(cpu) + "_" + str(freq) + "_spec_" + str(benchmark) + "_" + str(granularity) + "_" + str(count) + "_" + str(redundancy) + ".out"
+                        command += " taskset --cpu-list " + str(cpu)
+                        command += " bash -c 'cd " + spec_dir + " && source shrc && runcpu -c base --config=matthew-1cpu " + str(benchmark) + "'"
+                        print(command)
+                        count += 1
     
     # DaCapo benchmarks with enhanced perf configuration (commented out)
     # for cpu in cpus:
