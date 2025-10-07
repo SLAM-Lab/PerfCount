@@ -74,18 +74,18 @@ if __name__ == "__main__":
     arm_group18 = "\"{instructions:pp,armv8_pmuv3_0/dp_spec/,armv8_pmuv3_0/ase_spec/,armv8_pmuv3_0/vfp_spec/}:S\""
 
     # Combine all groups for easy iteration
+    # Only using high-frequency groups (0-5, 10-12) for final analysis
     arm_groups = [
-        arm_group0
-#        arm_group0, arm_group1, arm_group2, arm_group3,
-#        arm_group4, arm_group5, arm_group6, arm_group7,
-#        arm_group8, arm_group9, arm_group10, arm_group11,
-#        arm_group12, arm_group13, arm_group14, arm_group15,
-#        arm_group16, arm_group17, arm_group18
+        arm_group0, arm_group1, arm_group2, arm_group3,
+        arm_group4, arm_group5, 
+        # arm_group6, arm_group7, arm_group8, arm_group9,  # Commented out - not used in final analysis
+        arm_group10, arm_group11, arm_group12
+        # arm_group13, arm_group14, arm_group15, arm_group16, arm_group17, arm_group18  # Commented out - not used in final analysis
     ]
 
     # ARM server configuration
     cpus = [0]  # Multiple CPU cores to test
-    freq = '1.5GHz'
+    freq = '3.0GHz'
     
     # Granularity: 10M instructions
     granularities = [10000000]
@@ -94,7 +94,7 @@ if __name__ == "__main__":
     dacapo_dir = '../../../benchmarks/dacapo/'
     
     # SPEC directory  
-    spec_dir = '/home/meb4744/PerfCount/benchmarks/spec'
+    spec_dir = '../../../benchmarks/spec'
 
     # Enhanced perf configuration for reduced instruction count variation:
     # - instructions:pp: Precise event-based sampling for accurate instruction counting
@@ -103,7 +103,7 @@ if __name__ == "__main__":
     # - taskset --cpu-list: Pins process to specific CPU core for consistent execution
     
     # Triple redundancy: perform each collection 3 times
-    redundancy_runs = [1, 2, 3]
+    redundancy_runs = [1]
     
     for redundancy in redundancy_runs:
         for cpu in cpus:
@@ -121,18 +121,18 @@ if __name__ == "__main__":
                         print(command)
                         count += 1
     
-    # DaCapo benchmarks with enhanced perf configuration (commented out)
-    # for cpu in cpus:
-    #     for benchmark in dacapo_benchmarks:
-    #         for granularity in granularities:
-    #             count = 0
-    #             for events in arm_groups:
-    #                 command  = "perf record -a -C " + str(cpu)
-    #                 command += " -e " + str(events)
-    #                 command += " -c " + str(granularity)
-    #                 command += " --no-buffering"
-    #                 command += " -o cpu_" + str(cpu) + "_" + str(freq) + "_dacapo_" + str(benchmark) + "_" + str(granularity) + "_" + str(count) + ".out"
-    #                 command += " taskset --cpu-list " + str(cpu)
-    #                 command += " java -jar " + dacapo_dir + "dacapo-23.11-MR2-chopin.jar -t 1 -n 10 " + str(benchmark)
-    #                 print(command)
-    #                 count += 1
+    #DaCapo benchmarks with enhanced perf configuration (commented out)
+    for cpu in cpus:
+        for benchmark in dacapo_benchmarks:
+            for granularity in granularities:
+                count = 0
+                for events in arm_groups:
+                    command  = "perf record -a -C " + str(cpu)
+                    command += " -e " + str(events)
+                    command += " -c " + str(granularity)
+                    command += " --no-buffering"
+                    command += " -o cpu_" + str(cpu) + "_" + str(freq) + "_dacapo_" + str(benchmark) + "_" + str(granularity) + "_" + str(count) + ".out"
+                    command += " taskset --cpu-list " + str(cpu)
+                    command += " java -XX:+UseSerialGC -Xint -XX:ParallelGCThreads=1 -XX:CICompilerCount=1 -XX:-BackgroundCompilation -XX:-TieredCompilation -Xms2g -Xmx2g -XX:-UseAdaptiveSizePolicy -jar " + dacapo_dir + "dacapo-23.11-MR2-chopin.jar -t 1 -n 1 " + str(benchmark)
+                    print(command)
+                    count += 1
