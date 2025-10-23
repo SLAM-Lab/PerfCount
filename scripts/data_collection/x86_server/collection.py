@@ -6,9 +6,8 @@ import time
 if __name__ == "__main__":
     # SPEC 2017 benchmarks
     spec_benchmarks = [
-        503
-        #  500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
-        #  503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
+         500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
+         503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
     ]
     
     # DaCapo benchmarks
@@ -17,67 +16,74 @@ if __name__ == "__main__":
         'jython', 'kafka', 'luindex', 'lusearch', 'pmd', 'spring', 'sunflow', 'tomcat', 'tradebeans', 'tradesoap', 'xalan', 'zxing'
     ]
       
-    # X86 SERVER EVENT GROUPS - 4 COUNTERS PER GROUP (TESTED FOR CONFLICTS)
-    # Each group contains 4 events that work together without conflicts
-    # Total: 15 groups covering 60 unique events (59 non-instruction + instructions in each group)
+    # X86 SERVER EVENT GROUPS - 4 COUNTERS PER GROUP (OPTIMIZED FOR ICE LAKE)
+    # 16 groups, 64 unique events
     
-    # Group 0: Basic Performance Counters - Verified working
-    x86_group0 = "\"{instructions,cpu-cycles,branch-instructions,branch-misses}:S\""
+    # WORKING GROUPS (perfect 10M instruction chunks):
     
-    # Group 1: Cache Performance - Verified working
-    x86_group1 = "\"{instructions,cache-misses,cache-references,bus-cycles}:S\""
+    # Group 0: Cache Performance
+    x86_group0 = "\"{instructions,cache-misses,cache-references,bus-cycles}:S\""
     
-    # Group 2: Memory and Reference Events - Verified working
-    x86_group2 = "\"{instructions,ref-cycles,page-faults,context-switches}:S\""
+    # Group 1: Reference Cycles and TLB Events
+    x86_group1 = "\"{instructions,ref-cycles,dtlb_load_misses.walk_completed,itlb_misses.walk_completed}:S\""
     
-    # Group 3: L1 Data Cache Events - Verified working
-    x86_group3 = "\"{instructions,l1d_pend_miss.pending_cycles,l1d_pend_miss.pending_cycles_any,l1d.replacement}:S\""
+    # Group 2: L1 Data Cache and TLB Events
+    x86_group2 = "\"{instructions,l1d_pend_miss.fb_full,l1d_pend_miss.l2_stall,dtlb_load_misses.stlb_hit}:S\""
     
-    # Group 4: L2 Cache Demand Events - Verified working
-    x86_group4 = "\"{instructions,l2_lines_in.all,l2_rqsts.demand_data_rd_hit,l2_rqsts.demand_data_rd_miss}:S\""
+    # Group 3: L2 Cache Demand Events
+    x86_group3 = "\"{instructions,l2_lines_in.all,l2_rqsts.demand_data_rd_hit,l2_rqsts.demand_data_rd_miss}:S\""
     
-    # Group 5: L2 Cache All Events - Verified working
-    x86_group5 = "\"{instructions,l2_rqsts.all_demand_data_rd,l2_rqsts.all_demand_miss,l2_rqsts.all_demand_references}:S\""
+    # Group 4: L2 Cache All Events
+    x86_group4 = "\"{instructions,l2_rqsts.all_demand_data_rd,l2_rqsts.all_demand_miss,l2_lines_out.non_silent}:S\""
     
-    # Group 6: Software Events - Verified working
-    x86_group6 = "\"{instructions,alignment-faults,emulation-faults,major-faults}:S\""
+    # Group 5: TLB Walk Active Events
+    x86_group5 = "\"{instructions,dtlb_load_misses.walk_active,dtlb_store_misses.walk_active,itlb_misses.walk_active}:S\""
     
-    # Group 7: Task and CPU Events - Verified working
-    x86_group7 = "\"{instructions,cpu-migrations,minor-faults,task-clock}:S\""
+    # Group 6: L2 Cache Code Events
+    x86_group6 = "\"{instructions,l2_rqsts.code_rd_hit,l2_rqsts.code_rd_miss,l2_rqsts.all_code_rd}:S\""
     
-    # Group 8: L2 Cache Code Events - Verified working
-    x86_group8 = "\"{instructions,l2_rqsts.code_rd_hit,l2_rqsts.code_rd_miss,l2_rqsts.all_code_rd}:S\""
+    # Group 7: L1 Data Cache Events
+    x86_group7 = "\"{instructions,l1d.replacement,l1d_pend_miss.pending_cycles,l1d_pend_miss.pending}:S\""
     
-    # Group 9: L1 Data Cache Load/Store Events - Verified working
-    x86_group9 = "\"{instructions,L1-dcache-loads,L1-dcache-stores,L1-dcache-load-misses}:S\""
+    # Group 8: Data TLB Events
+    x86_group8 = "\"{instructions,dtlb_load_misses.walk_pending,dtlb_store_misses.walk_pending}:S\""
     
-    # Group 10: L1 Instruction Cache Events - Verified working
-    x86_group10 = "\"{instructions,L1-icache-load-misses,branch-loads,branch-load-misses}:S\""
+    # Group 9: Instruction TLB Events
+    x86_group9 = "\"{instructions,itlb_misses.stlb_hit,itlb_misses.walk_pending}:S\""
     
-    # Group 11: Data TLB Events - Verified working
-    x86_group11 = "\"{instructions,dTLB-loads,dTLB-load-misses,dTLB-store-misses}:S\""
+    # Group 10: AVX Events
+    x86_group10 = "\"{instructions,fp_arith_inst_retired.256b_packed_single,fp_arith_inst_retired.256b_packed_double,fp_arith_inst_retired.512b_packed_single}:S\""
     
-    # Group 12: Instruction TLB Events - Verified working
-    x86_group12 = "\"{instructions,dTLB-stores,iTLB-loads,iTLB-load-misses}:S\""
+    # Group 11: Data TLB Store Events
+    x86_group11 = "\"{instructions,dtlb_store_misses.stlb_hit,dtlb_store_misses.walk_completed}:S\""
     
-    # Group 13: Floating Point Events - Verified working
-    x86_group13 = "\"{instructions,fp_arith_inst_retired.scalar_single,fp_arith_inst_retired.scalar_double,fp_arith_inst_retired.128b_packed_single}:S\""
+    # ALTERNATIVE GROUPS (with working alternative counters):
     
-    # Group 14: AVX Events - Verified working
-    x86_group14 = "\"{instructions,fp_arith_inst_retired.256b_packed_single,fp_arith_inst_retired.256b_packed_double,fp_arith_inst_retired.512b_packed_single}:S\""
+    # Group 12: Basic Performance Counters (with alternative)
+    x86_group12 = "\"{instructions,cpu-cycles,branches,branch-misses}:S\""
+    
+    # Group 13: Memory Load Events (with alternative)
+    x86_group13 = "\"{instructions,mem_load_retired.fb_hit,mem_load_retired.l1_miss,mem_load_retired.l2_hit,mem_load_retired.l3_hit}:S\""
+    
+    # Group 14: L1 Instruction Cache Events (with alternative)
+    x86_group14 = "\"{instructions,L1-icache-load-misses,icache_64b.iftag_miss,icache_64b.iftag_stall}:S\""
+    
+    # Group 15: Floating Point Events (with alternative)
+    x86_group15 = "\"{instructions,fp_arith_inst_retired.scalar_single,fp_arith_inst_retired.128b_packed_double,fp_arith_inst_retired.128b_packed_single}:S\""
 
     # Combine all groups for easy iteration
-    # All groups are used for comprehensive analysis on x86 server
+    # First 12 groups: WORKING (perfect 10M instruction chunks)
+    # Last 4 groups: ALTERNATIVE (with working alternative counters)
     x86_groups = [
         x86_group0, x86_group1, x86_group2, x86_group3,
         x86_group4, x86_group5, x86_group6, x86_group7,
         x86_group8, x86_group9, x86_group10, x86_group11,
-        x86_group12, x86_group13, x86_group14
+        x86_group12, x86_group13, x86_group14, x86_group15
     ]
 
-    # Intel Xeon Gold 6126 server configuration
+    # Intel Xeon Platinum 8380 server configuration (Ice Lake)
     cpus = [0]  # Multiple CPU cores to test
-    freq = '1.5GHz'  # Base frequency for Intel Xeon Gold 6126
+    freq = '2.3GHz'  # Base frequency for Intel Xeon Platinum 8380
     
     # Granularity: 10M instructions
     granularities = [10000000]
@@ -88,10 +94,10 @@ if __name__ == "__main__":
     # SPEC directory  
     spec_dir = '../../../benchmarks/spec'
 
-    # Enhanced perf configuration for Intel Xeon Gold 6126:
+    # Enhanced perf configuration for Intel Xeon Platinum 8380 (Ice Lake):
     # - --no-buffering: Disables internal buffering for immediate sample writing
     # - taskset --cpu-list: Pins process to specific CPU core for consistent execution
-    # - Intel-specific events optimized for Skylake microarchitecture
+    # - Ice Lake-specific events optimized for Ice Lake microarchitecture
     
     # Single run configuration for initial testing
     redundancy_runs = [1]
@@ -112,7 +118,7 @@ if __name__ == "__main__":
                         print(command)
                         count += 1
     
-    # DaCapo benchmarks with enhanced perf configuration for x86
+    # DaCapo benchmarks with enhanced perf configuration for x86 Ice Lake
     for cpu in cpus:
         for benchmark in dacapo_benchmarks:
             for granularity in granularities:
