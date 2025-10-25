@@ -21,7 +21,7 @@ try:
     BAYESIAN_AVAILABLE = True
 except ImportError:
     BAYESIAN_AVAILABLE = False
-    print("⚠️  scikit-optimize not available, falling back to RandomizedSearchCV")
+    print("WARNING: scikit-optimize not available, falling back to RandomizedSearchCV")
 from sklearn.ensemble import RandomForestRegressor, GradientBoostingRegressor
 from sklearn.linear_model import Ridge, Lasso, ElasticNet
 from sklearn.svm import SVR
@@ -92,12 +92,12 @@ def get_device():
         return device, True
     else:
         device = torch.device("cpu")
-        print("⚠️  CUDA not available, using CPU")
+        print("WARNING: CUDA not available, using CPU")
         return device, False
 
 def load_workload_data(source_dir, target_dir, target_column, max_workloads=None):
     """Load cross-platform workload data with memory optimization"""
-    print(f"🔍 Loading cross-platform data...")
+    print(f"Loading cross-platform data...")
     
     source_files = sorted([f for f in os.listdir(source_dir) if f.endswith('.csv')])
     target_files = sorted([f for f in os.listdir(target_dir) if f.endswith('.csv')])
@@ -107,8 +107,13 @@ def load_workload_data(source_dir, target_dir, target_column, max_workloads=None
     
     common_workloads = sorted(set(source_workloads) & set(target_workloads))
     
-    if max_workloads:
+    print(f"Found {len(common_workloads)} common workloads between source and target directories")
+    
+    if max_workloads and max_workloads < len(common_workloads):
+        print(f"Limiting to {max_workloads} workloads")
         common_workloads = common_workloads[:max_workloads]
+    else:
+        print(f"Using all {len(common_workloads)} available workloads")
     
     workload_data = []
     
@@ -121,7 +126,7 @@ def load_workload_data(source_dir, target_dir, target_column, max_workloads=None
         target_path = os.path.join(target_dir, target_file)
         
         if os.path.exists(source_path) and os.path.exists(target_path):
-            print(f"  📁 Loading {workload}...")
+            print(f"  Loading {workload}...")
             
             # Load data without dtype constraint first
             source_df = pd.read_csv(source_path)
@@ -142,12 +147,12 @@ def load_workload_data(source_dir, target_dir, target_column, max_workloads=None
                     # Check for overflow/underflow
                     if np.any(np.isinf(X_source)) or np.any(np.isnan(X_source)) or np.any(np.isinf(y_target)) or np.any(np.isnan(y_target)):
                         raise ValueError("Float16 overflow detected")
-                    print(f"    🚀 Using float16 for maximum speed")
+                    print(f"    Using float16 for maximum speed")
                 except (ValueError, OverflowError):
                     # Fallback to float32 if float16 causes issues
                     X_source = source_df[feature_columns].values.astype(np.float32)
                     y_target = target_df[target_column].values.astype(np.float32)
-                    print(f"    ⚠️  Float16 overflow, using float32")
+                    print(f"    WARNING: Float16 overflow, using float32")
                 
                 workload_data.append({
                     'workload': workload,
@@ -156,11 +161,11 @@ def load_workload_data(source_dir, target_dir, target_column, max_workloads=None
                     'features': feature_columns
                 })
                 
-                print(f"    ✅ {workload}: {len(X_source)} samples, {len(feature_columns)} features")
+                print(f"    {workload}: {len(X_source)} samples, {len(feature_columns)} features")
             else:
-                print(f"    ❌ {workload}: Target column '{target_column}' not found")
+                print(f"    ERROR: {workload}: Target column '{target_column}' not found")
         else:
-            print(f"    ❌ {workload}: Missing files")
+            print(f"    ERROR: {workload}: Missing files")
     
     return workload_data
 
@@ -177,7 +182,7 @@ def train_single_model_parallel(args):
         
         return cv_results
     except Exception as e:
-        print(f"❌ Error training {model_name}: {str(e)}")
+        print(f"ERROR: Error training {model_name}: {str(e)}")
         return None
 
 def train_pytorch_model(model, X_train, y_train, X_test, y_test, device, use_amp=False):
@@ -195,7 +200,7 @@ def train_pytorch_model(model, X_train, y_train, X_test, y_test, device, use_amp
     if "A100" in torch.cuda.get_device_name(0) and gpu_memory > 30:  # A100 40GB or 80GB
         batch_size = 32768  # Large batch size for A100
         lr = 0.002  # Higher learning rate for large batch
-        print(f"        🚀 A100 detected - using batch_size={batch_size}, lr={lr}")
+        print(f"        A100 detected - using batch_size={batch_size}, lr={lr}")
     else:
         batch_size = 16384  # Still large for other GPUs
         lr = 0.001
@@ -224,7 +229,7 @@ def train_pytorch_model(model, X_train, y_train, X_test, y_test, device, use_amp
     scaler = torch.amp.GradScaler('cuda') if use_amp and device.type == 'cuda' else None
     
     start_time = time.time()
-    print(f"        🔄 Training for up to {epochs} epochs (early stopping patience: {patience})...")
+    print(f"        Training for up to {epochs} epochs (early stopping patience: {patience})...")
     
     for epoch in range(epochs):
         model.train()
@@ -261,11 +266,11 @@ def train_pytorch_model(model, X_train, y_train, X_test, y_test, device, use_amp
             patience_counter += 1
         
         if patience_counter >= patience:
-            print(f"        ⏹️  Early stopping at epoch {epoch + 1}")
+            print(f"        Early stopping at epoch {epoch + 1}")
             break
     
     training_time = time.time() - start_time
-    print(f"        ✅ Training completed in {training_time:.1f}s ({epoch + 1} epochs)")
+    print(f"        Training completed in {training_time:.1f}s ({epoch + 1} epochs)")
     
     # Evaluate
     model.eval()
@@ -287,7 +292,7 @@ def train_sklearn_model(model, X_train, y_train, X_test, y_test):
     model.fit(X_train, y_train)
     
     training_time = time.time() - start_time
-    print(f"        ✅ Training completed in {training_time:.1f}s")
+    print(f"        Training completed in {training_time:.1f}s")
     
     train_pred = model.predict(X_train)
     test_pred = model.predict(X_test)
@@ -329,7 +334,7 @@ def cross_validate_model(model, X, y, groups, model_name, device=None, use_amp=F
     
     # Check if this model should use hyperparameter search
     if param_grid is not None and model_name in ['XGBoost', 'CatBoost']:
-        print(f"  🔍 Hyperparameter tuning {model_name} with {n_iter} iterations...")
+        print(f"  Hyperparameter tuning {model_name} with {n_iter} iterations...")
         print(f"    Parameter grid: {list(param_grid.keys())}")
         
         # Use GroupKFold for hyperparameter search on tree models (10-fold)
@@ -353,26 +358,27 @@ def cross_validate_model(model, X, y, groups, model_name, device=None, use_amp=F
         print(f"    Searching {n_iter} parameter combinations across 10-fold CV...")
         search.fit(X, y, groups=groups)
         
-        print(f"    ✅ Best parameters: {search.best_params_}")
-        print(f"    ✅ Best score (negative MAPE): {search.best_score_:.4f}")
+        print(f"    Best parameters: {search.best_params_}")
+        print(f"    Best score (negative MAPE): {search.best_score_:.4f}")
         
         # Now evaluate the best model with full CV
         best_model = search.best_estimator_
         model_name = f"{model_name}_Tuned"
         
-        # Use LeaveOneGroupOut for final evaluation (23-fold)
+        # Use LeaveOneGroupOut for final evaluation
         logo_final = LeaveOneGroupOut()
         cv_results = []
         unique_groups = list(set(groups))
+        num_workloads = len(unique_groups)
         
-        print(f"  📊 Final evaluation of tuned {model_name} with 23-fold CV...")
+        print(f"  Final evaluation of tuned {model_name} with {num_workloads}-fold Leave-One-Group-Out CV...")
         
         for fold, (train_idx, test_idx) in enumerate(logo_final.split(X, y, groups=groups)):
             # Get unique workloads in test set
             test_workloads = list(set([groups[i] for i in test_idx]))
             train_workloads = list(set([groups[i] for i in train_idx]))
             
-            print(f"    Fold {fold + 1}/23: Testing on workloads {test_workloads}")
+            print(f"    Fold {fold + 1}/{num_workloads}: Testing on workloads {test_workloads}")
             
             X_train, X_test = X[train_idx], X[test_idx]
             y_train, y_test = y[train_idx], y[test_idx]
@@ -541,7 +547,7 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
     workload_data = load_workload_data(source_dir, target_dir, target_column, max_workloads)
     
     if len(workload_data) < 2:
-        print("❌ Need at least 2 workloads for cross-validation")
+        print("ERROR: Need at least 2 workloads for cross-validation")
         return
     
     # Combine all workload data
@@ -558,13 +564,13 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
         all_y.append(y)
         all_groups.extend([workload_name] * len(X))
         
-        print(f"  📁 {workload_name}: {len(X)} samples, {X.shape[1]} features")
+        print(f"  {workload_name}: {len(X)} samples, {X.shape[1]} features")
     
     # Concatenate all data
     X_combined = np.vstack(all_X)
     y_combined = np.hstack(all_y)
     
-    print(f"  📊 Combined data: {len(X_combined)} samples, {X_combined.shape[1]} features")
+    print(f"  Combined data: {len(X_combined)} samples, {X_combined.shape[1]} features")
     
     # Scale features with memory optimization
     scaler_X = StandardScaler()
@@ -595,16 +601,16 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
         y_scaled = y_scaled.astype(np.float32)
         precision = "float32 (fallback)"
     
-    print(f"  💾 Memory optimization: Using {precision} precision")
+    print(f"  Memory optimization: Using {precision} precision")
     print(f"    - X_scaled memory: {X_scaled.nbytes / 1024**2:.1f} MB")
     print(f"    - y_scaled memory: {y_scaled.nbytes / 1024**2:.1f} MB")
     
-    print(f"  📊 Target scaling with log transform:")
+    print(f"  Target scaling with log transform:")
     print(f"    - Original y range: [{y_combined.min():.2e}, {y_combined.max():.2e}]")
     print(f"    - Log y range: [{y_log.min():.3f}, {y_log.max():.3f}]")
     print(f"    - Using log-transformed targets directly (no additional scaling)")
     
-    # Define models - XGBoost only for focused evaluation
+    # Define models - XGBoost and CatBoost for hyperparameter search
     models = {}
     
     # XGBoost with GPU acceleration
@@ -613,17 +619,30 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
             n_estimators=200, max_depth=6, learning_rate=0.1, random_state=42,
             tree_method='gpu_hist', gpu_id=0, n_jobs=-1
         )
-        print("  🚀 XGBoost configured for GPU acceleration")
+        print("  XGBoost configured for GPU acceleration")
     else:
         models['XGBoost'] = XGBRegressor(n_estimators=200, max_depth=6, learning_rate=0.1, random_state=42, n_jobs=-1)
     
-    # Run evaluation for XGBoost only
-    print(f"\nRunning XGBoost cross-platform evaluation...")
+    # CatBoost with GPU acceleration
+    if use_gpu:
+        models['CatBoost'] = CatBoostRegressor(
+            iterations=200, depth=6, learning_rate=0.1, random_state=42,
+            task_type='GPU', devices='0', verbose=0
+        )
+        print("  CatBoost configured for GPU acceleration")
+    else:
+        models['CatBoost'] = CatBoostRegressor(
+            iterations=200, depth=6, learning_rate=0.1, random_state=42,
+            verbose=0, thread_count=-1
+        )
+    
+    # Run evaluation for both XGBoost and CatBoost
+    print(f"\nRunning XGBoost and CatBoost cross-platform evaluation with hyperparameter search...")
     print("=" * 80)
     
     all_results = []
     
-    # Process XGBoost only
+    # Process both XGBoost and CatBoost with hyperparameter search
     for i, (model_name, model) in enumerate(models.items()):
         print(f"\nEvaluating {model_name}...")
         print("-" * 60)
@@ -632,45 +651,56 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
             # Determine parameter grid and CV strategy
             param_grid = None
             n_folds = 5
+            n_iter = 100  # Number of hyperparameter search iterations
             
-            # XGBoost hyperparameter search
-            param_grid = get_xgboost_param_grid()
-            n_folds = 23  # Leave-one-out for final evaluation
-            print(f"  🔍 XGBoost: Bayesian hyperparameter search with 50 iterations, 10-fold CV, 23-fold final evaluation")
+            # Get model-specific parameter grid
+            if model_name == 'XGBoost':
+                param_grid = get_xgboost_param_grid()
+                n_folds = 40  # Leave-one-out for final evaluation (will auto-adjust to actual workload count)
+                print(f"  {model_name}: Bayesian hyperparameter search with {n_iter} iterations, 10-fold CV, then Leave-One-Group-Out final evaluation")
+            elif model_name == 'CatBoost':
+                param_grid = get_catboost_param_grid()
+                n_folds = 40  # Leave-one-out for final evaluation (will auto-adjust to actual workload count)
+                print(f"  {model_name}: Bayesian hyperparameter search with {n_iter} iterations, 10-fold CV, then Leave-One-Group-Out final evaluation")
             
-            # Cross-validation
+            # Cross-validation with hyperparameter search
             cv_results = cross_validate_model(model, X_scaled, y_scaled, all_groups, model_name, 
                                             n_folds=n_folds, scaler_y=scaler_y, 
-                                            param_grid=param_grid, n_iter=50)
+                                            param_grid=param_grid, n_iter=n_iter)
             all_results.append(cv_results)
             
             # Print results summary
-            print(f"\nXGBoost Results Summary:")
+            print(f"\n{model_name} Results Summary:")
             print(f"  - Average Test MAPE: {cv_results['avg_test_mape']:.2f}% ± {cv_results['std_test_mape']:.2f}%")
             print(f"  - Average Test R²: {cv_results['avg_test_r2']:.4f} ± {cv_results['std_test_r2']:.4f}")
             print(f"  - Average Training Time: {cv_results['avg_training_time']:.1f}s")
+            if 'best_params' in cv_results:
+                print(f"  - Best Parameters: {cv_results['best_params']}")
             print("-" * 60)
             
         except Exception as e:
-            print(f"❌ {model_name} failed with error: {str(e)}")
+            print(f"ERROR: {model_name} failed with error: {str(e)}")
             continue
     
     # Sort results by test MAPE
     all_results.sort(key=lambda x: x['avg_test_mape'])
     
     # Print summary
-    print(f"\n🏆 XGBOOST CROSS-PLATFORM EVALUATION RESULTS")
+    print(f"\nCROSS-PLATFORM EVALUATION RESULTS (XGBoost & CatBoost)")
     print("=" * 80)
-    print(f"📊 Summary: XGBoost evaluated on {len(workload_data)} workloads")
-    print(f"🎯 Target: {target_column}")
+    print(f"Summary: {len(all_results)} models evaluated on {len(workload_data)} workloads")
+    print(f"Target: {target_column}")
     
     if all_results:
-        result = all_results[0]
-        print(f"📈 XGBoost Performance:")
-        print(f"  - Average Test MAPE: {result['avg_test_mape']:.2f}% ± {result['std_test_mape']:.2f}%")
-        print(f"  - Average Test R²: {result['avg_test_r2']:.4f} ± {result['std_test_r2']:.4f}")
-        print(f"  - Average Training Time: {result['avg_training_time']:.1f}s")
-        print(f"  - Total Folds: {result['total_folds']}")
+        print(f"\nModel Rankings (by Test MAPE):")
+        for i, result in enumerate(all_results, 1):
+            print(f"\n{i}. {result['model']} Performance:")
+            print(f"  - Average Test MAPE: {result['avg_test_mape']:.2f}% ± {result['std_test_mape']:.2f}%")
+            print(f"  - Average Test R²: {result['avg_test_r2']:.4f} ± {result['std_test_r2']:.4f}")
+            print(f"  - Average Training Time: {result['avg_training_time']:.1f}s")
+            print(f"  - Total Folds: {result['total_folds']}")
+            if 'best_params' in result:
+                print(f"  - Best Parameters: {result['best_params']}")
     
     # Save results
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -695,20 +725,20 @@ def run_cross_platform_evaluation(source_dir, target_dir, target_column, max_wor
     with open(output_file, 'w') as f:
         json.dump(results_data, f, indent=2, default=str)
     
-    print(f"\n💾 Results saved to: {output_file}")
+    print(f"\nResults saved to: {output_file}")
     
     return all_results
 
 def main():
     parser = argparse.ArgumentParser(description='Cross-platform CPU cycle prediction with GPU acceleration')
-    parser.add_argument('--source_dir', type=str, default='data/training_csvs/arm_server_3.0GHz',
+    parser.add_argument('--source_dir', type=str, default='data/arm_server/final_csvs/3.0GHz',
                         help='Source directory with 3.0GHz data')
-    parser.add_argument('--target_dir', type=str, default='data/training_csvs/arm_server_1.5GHz',
+    parser.add_argument('--target_dir', type=str, default='data/arm_server/final_csvs/1.5GHz',
                         help='Target directory with 1.5GHz data')
-    parser.add_argument('--target_column', type=str, default='cpu-cycles',
+    parser.add_argument('--target_column', type=str, default='cpu-cycles:',
                         help='Target column to predict')
-    parser.add_argument('--max_workloads', type=int, default=23,
-                        help='Maximum number of workloads to evaluate (use all 23 workloads)')
+    parser.add_argument('--max_workloads', type=int, default=None,
+                        help='Maximum number of workloads to evaluate (default: None = use all available)')
     parser.add_argument('--output_file', type=str, default='cross_platform_gpu_results.json',
                         help='Output file for results')
     
@@ -719,7 +749,7 @@ def main():
     print(f"Source: {args.source_dir}")
     print(f"Target: {args.target_dir}")
     print(f"Target Column: {args.target_column}")
-    print(f"Max Workloads: {args.max_workloads}")
+    print(f"Max Workloads: {'All available' if args.max_workloads is None else args.max_workloads}")
     print(f"Output File: {args.output_file}")
     
     # Run evaluation
@@ -729,9 +759,9 @@ def main():
     )
     
     if results:
-        print(f"\n✅ Evaluation completed successfully!")
-        print(f"📊 {len(results)} models evaluated")
-        print(f"🏆 Best model: {results[0]['model']} (MAPE: {results[0]['avg_test_mape']:.2f}%)")
+        print(f"\nEvaluation completed successfully!")
+        print(f"{len(results)} models evaluated")
+        print(f"Best model: {results[0]['model']} (MAPE: {results[0]['avg_test_mape']:.2f}%)")
 
 if __name__ == "__main__":
     main()
