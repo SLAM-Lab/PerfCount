@@ -166,7 +166,7 @@ BEGIN {
             '548': 'exchange2_r_bas',
             '549': 'fotonik3d_r_ba',
             '554': 'roms_r_base.myt',
-            '557': 'xz_r_base.mytest'
+            '557': 'xz_r_base.mytes'
         }
         
         # Check if it's a SPEC workload
@@ -305,55 +305,181 @@ BEGIN {
         print("="*80)
     
     # ============================================================================
-    # STAGE 4: FINAL CSV GENERATION
+    # STAGE 4: FINAL CSV GENERATION (MERGE ALL COUNTER GROUPS)
     # ============================================================================
     
-    def generate_final_csv(self, premerge_file):
-        """Generate final CSV from premerge file (1-to-1 transformation)"""
+    def group_premerge_files(self):
+        """Group premerge files by workload (all counter groups together)"""
+        from collections import defaultdict
+        
+        premerge_files = list(self.premerge_csvs_dir.glob("*_premerge.csv"))
+        
+        workload_groups = defaultdict(list)
+        
+        for f in premerge_files:
+            # Parse filename to extract workload identifier
+            # Two formats:
+            # DaCapo: cpu_0_1.5GHz_dacapo_avrora_10000000_{counter_group}_premerge.csv
+            # SPEC:   cpu_0_1.5GHz_spec_520_10000000_{counter_group}_1_premerge.csv
+            parts = f.stem.split('_')
+            
+            # Check if this is SPEC or DaCapo based on presence of '_1' before '_premerge'
+            # parts[-1] is 'premerge', parts[-2] is either counter_group (DaCapo) or '1' (SPEC)
+            
+            if 'spec_' in f.name:
+                # SPEC format: counter_group is at parts[-3], skip parts[-2] which is always '1'
+                counter_group_idx = len(parts) - 3
+                workload_key = '_'.join(parts[:counter_group_idx])
+            else:
+                # DaCapo format: counter_group is at parts[-2]
+                counter_group_idx = len(parts) - 2
+                workload_key = '_'.join(parts[:counter_group_idx])
+            
+            # Get counter group number
+            try:
+                counter_group_num = int(parts[counter_group_idx])
+                workload_groups[workload_key].append((counter_group_num, f))
+            except ValueError:
+                print(f"Warning: Could not parse counter group from {f.name}")
+                continue
+        
+        # Sort each group by counter group number
+        for key in workload_groups:
+            workload_groups[key].sort(key=lambda x: x[0])
+        
+        return workload_groups
+    
+    def merge_counter_groups(self, workload_key, counter_group_files):
+        """Merge all counter groups for a single workload into one final CSV"""
         try:
-            final_file = self.final_csvs_dir / premerge_file.name.replace('_premerge.csv', '_final.csv')
+            # Determine frequency-based subdirectory
+            if '1.5GHz' in workload_key:
+                freq_dir = self.final_csvs_dir / "1.5GHz"
+            elif '3.0GHz' in workload_key:
+                freq_dir = self.final_csvs_dir / "3.0GHz"
+            else:
+                freq_dir = self.final_csvs_dir  # Fallback to root
+            
+            # Create frequency subdirectory if it doesn't exist
+            freq_dir.mkdir(parents=True, exist_ok=True)
+            
+            final_file = freq_dir / f"{workload_key}_merged.csv"
             
             # Skip if already processed
             if final_file.exists():
-                return f" {premerge_file.name} (already exists)"
+                return f" {workload_key} (already exists)"
             
-            # Read premerge file
-            df = pd.read_csv(premerge_file)
+            # Determine which groups to use based on workload type
+            # SPEC 1.5GHz: groups 0-5, 10-12 (groups 6-9, 13-18 have different counters)
+            # SPEC 3.0GHz and DaCapo: groups 0-8
+            if '1.5GHz_spec_' in workload_key:
+                # SPEC 1.5GHz: use groups 0-5, 10-12
+                required_groups = [0, 1, 2, 3, 4, 5, 10, 11, 12]
+            else:
+                # SPEC 3.0GHz and DaCapo: use groups 0-8
+                required_groups = [0, 1, 2, 3, 4, 5, 6, 7, 8]
             
-            # Basic cleaning and validation
-            # Remove any duplicate rows
-            df_final = df.drop_duplicates()
+            # Filter to only use the required groups
+            filtered_files = [(num, path) for num, path in counter_group_files if num in required_groups]
             
-            # Save final CSV
-            df_final.to_csv(final_file, index=False)
+            if len(filtered_files) != len(required_groups):
+                found_groups = [num for num, _ in filtered_files]
+                return f" {workload_key} (missing groups, expected {required_groups}, found {found_groups})"
             
-            return f" {premerge_file.name} ({len(df)} -> {len(df_final)} rows)"
+            # Load all counter group files
+            dfs = []
+            for group_num, filepath in filtered_files:
+                df = pd.read_csv(filepath)
+                dfs.append((group_num, df, filepath.name))
+            
+            if not dfs:
+                return f" {workload_key} (no files found)"
+            
+            # Find the shortest dataframe to truncate all to the same length
+            min_length = min(len(df) for _, df, _ in dfs)
+            
+            # Start with group 0 as the base
+            base_df = None
+            for group_num, df, fname in dfs:
+                if group_num == 0:
+                    base_df = df.iloc[:min_length].copy()
+                    break
+            
+            if base_df is None:
+                return f" {workload_key} (group 0 not found)"
+            
+            # Add sample_number column at the beginning
+            base_df.insert(0, 'sample_number', range(len(base_df)))
+            
+            # Drop timestamp column (not needed for analysis)
+            if 'timestamp' in base_df.columns:
+                base_df = base_df.drop(columns=['timestamp'])
+            
+            # Track which columns we already have (normalize column names)
+            existing_columns = set(col.strip().lower() for col in base_df.columns)
+            
+            # Merge other counter groups (skip group 0 since it's the base)
+            for group_num, df, fname in dfs:
+                if group_num == 0:
+                    continue
+                
+                # Truncate to min_length
+                df_truncated = df.iloc[:min_length].copy()
+                
+                # Add columns that don't already exist (case-insensitive check)
+                for col in df_truncated.columns:
+                    col_normalized = col.strip().lower()
+                    
+                    # Skip timestamp and instructions (already in base)
+                    if col_normalized in ['timestamp', 'instructions:pp:', 'instructions']:
+                        continue
+                    
+                    # Skip if column already exists
+                    if col_normalized in existing_columns:
+                        continue
+                    
+                    # Add new column
+                    base_df[col] = df_truncated[col].values
+                    existing_columns.add(col_normalized)
+            
+            # Save final merged CSV
+            base_df.to_csv(final_file, index=False)
+            
+            num_groups = len(counter_group_files)
+            num_cols = len(base_df.columns)
+            
+            return f" {workload_key} ({num_groups} groups merged, {min_length} rows, {num_cols} columns)"
             
         except Exception as e:
-            return f" {premerge_file.name} ({str(e)})"
+            import traceback
+            return f" {workload_key} (ERROR: {str(e)}\n{traceback.format_exc()})"
     
     def stage4_final_generation(self):
-        """Stage 4: Generate final CSVs from premerge files"""
+        """Stage 4: Merge all counter groups for each workload into final CSVs"""
         print("\n" + "="*80)
-        print("STAGE 4: FINAL CSV GENERATION (PREMERGE -> FINAL)")
+        print("STAGE 4: FINAL CSV GENERATION (MERGE COUNTER GROUPS)")
         print("="*80)
         
-        premerge_files = list(self.premerge_csvs_dir.glob("*_premerge.csv"))
-        total_files = len(premerge_files)
+        # Group premerge files by workload
+        workload_groups = self.group_premerge_files()
+        total_workloads = len(workload_groups)
         
-        print(f" Found {total_files} premerge files")
+        print(f" Found {total_workloads} unique workloads to merge")
         print(f" Processing with {self.max_workers} parallel workers...\n")
         
         start_time = time.time()
         
         with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
-            futures = {executor.submit(self.generate_final_csv, f): f for f in premerge_files}
+            futures = {
+                executor.submit(self.merge_counter_groups, key, files): key 
+                for key, files in workload_groups.items()
+            }
             
             completed = 0
             for future in as_completed(futures):
                 result = future.result()
                 completed += 1
-                print(f"[{completed}/{total_files}] {result}")
+                print(f"[{completed}/{total_workloads}] {result}")
         
         elapsed = time.time() - start_time
         print(f"\n Stage 4 complete in {elapsed:.1f}s")
