@@ -13,7 +13,7 @@ if __name__ == "__main__":
     cpus = [0]      # P-core
     atom_cpus = [16] # E-core   
     granularities = [100000000]
-    frequencies = ['3.0GHz'] 
+    frequencies = ['2.0GHz'] 
     dacapo_dir = '../../../benchmarks/dacapo/'    
     spec_dir = '../../..//benchmarks/spec'
     
@@ -25,7 +25,7 @@ if __name__ == "__main__":
                 command += " bash -c 'cd " + spec_dir + " && source shrc && "
                 command += "runcpu --config=matthew-1cpu-x86-desktop-heterogeneous-pcore "
                 command += "--define my_cpu=" + str(cpu) + " "
-                command += "--define my_freq=" + str(freq) + " "
+                command += "--define my_freq=" + str(frequencies[0]) + " "
                 command += "--define my_run=" + str(run_number) + " "
                 command += str(benchmark) + "'" 
                 print(command)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
                 command += " bash -c 'cd " + spec_dir + " && source shrc && "
                 command += "runcpu --config=matthew-1cpu-x86-desktop-heterogeneous-ecore "
                 command += "--define my_cpu=" + str(cpu) + " "
-                command += "--define my_freq=" + str(freq) + " "
+                command += "--define my_freq=" + str(frequencies[0]) + " "
                 command += "--define my_run=" + str(run_number) + " "
                 command += str(benchmark) + "'"
                 print(command)
