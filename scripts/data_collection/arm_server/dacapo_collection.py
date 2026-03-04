@@ -50,7 +50,7 @@ if __name__ == "__main__":
                         
                         # 2. Run the Java command pinned to the same CPU.
                         command += "taskset --cpu-list " + str(cpu) + " "
-                        command += "java -Xcomp -XX:+UseSerialGC -Xms2g -Xmx2g -XX:-UseAdaptiveSizePolicy -jar " + dacapo_dir + "/dacapo-23.11-MR2-chopin.jar -t 1 -n 1 " + str(benchmark)
+                        command += "java -Xcomp -XX:+UseSerialGC -Xms2g -Xmx2g -XX:-UseAdaptiveSizePolicy -jar " + dacapo_dir + "/dacapo-23.11-MR2-chopin.jar -t 1 -n 1 -s large" + str(benchmark)
                         
                         f.write(command + "\n") 
                         count += 1
