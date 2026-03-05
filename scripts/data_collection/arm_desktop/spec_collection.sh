@@ -1,420 +1,436 @@
 #!/bin/bash
 
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 554
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 500
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 502
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 505
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 520
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 523
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 525
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 531
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 541
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 548
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 557
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 503
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 507
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 508
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 510
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 511
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 519
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 521
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 526
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 527
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 538
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 544
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 549
-cd ../../../benchmarks/spec && source shrc && runcpu --base --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 554
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=0 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=1 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=2 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=3 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=4 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=5 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=6 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=7 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=8 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=9 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=10 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=11 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=12 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=13 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=14 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=15 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=16 554'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 500'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 502'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 505'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 520'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 523'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 525'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 531'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 541'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 548'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 557'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 503'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 507'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 508'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 510'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 511'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 519'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 521'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 526'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 527'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 538'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 544'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 549'
+taskset --cpu-list 0 bash -c 'cd ../../../benchmarks/spec && source shrc && runcpu --config=arm_desktop --define my_cpu=0 --define my_freq=3.0GHz --define my_run=17 554'
 
+# Send email notification upon completion
 END_TIME=$(date)
 HOSTNAME=$(hostname)
-echo "SPEC Data collection completed at $END_TIME on $HOSTNAME" | mail -s "SPEC Collection Complete" -r "mebarondeau@utexas.edu" "mebarondeau@utexas.edu"
+EMAIL_SENDER="mebarondeau@utexas.edu"
+EMAIL_RECIPIENT="mebarondeau@utexas.edu"
+EMAIL_SUBJECT="PerfCount Data Collection Completed on $HOSTNAME"
+EMAIL_BODY="The data collection workloads have completed successfully.
+
+Hostname: $HOSTNAME
+End Time: $END_TIME
+Script: arm_edge_heterogeneous/collection.sh
+Working Directory: $(pwd)
+
+All SPEC benchmarks have been processed.
+"
+
+echo "$EMAIL_BODY" | mail -s "$EMAIL_SUBJECT" -r "$EMAIL_SENDER" "$EMAIL_RECIPIENT"
+
+echo "Data collection completed at $END_TIME"

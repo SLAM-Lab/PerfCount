@@ -25,17 +25,38 @@ if __name__ == "__main__":
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
-                        command = f"cd {spec_dir} && source shrc && "
-                        command += f"runcpu --base --config=arm_desktop --define my_cpu={cpu} --define my_freq={freq}GHz "
-                        command += f"--define my_run={run_number} {benchmark}" 
-                        f.write(command + "\n") 
+                        command = "taskset --cpu-list " + str(cpu)
+                        command += " bash -c 'cd " + spec_dir + " && source shrc && "
+                        command += "runcpu --config=arm_desktop "
+                        command += "--define my_cpu=" + str(cpu) + " "
+                        command += "--define my_freq=" + str(freq) + "GHz "
+                        command += "--define my_run=" + str(run_number) + " "
+                        command += str(benchmark) + "'"
+                        f.write(command + "\n")
                         count += 1
 
-        # Email notification block
+
+        # Add email notification at the end of the script
         f.write("\n")
+        f.write("# Send email notification upon completion\n")
         f.write("END_TIME=$(date)\n")
         f.write("HOSTNAME=$(hostname)\n")
-        f.write("echo \"SPEC Data collection completed at $END_TIME on $HOSTNAME\" | mail -s \"SPEC Collection Complete\" -r \"mebarondeau@utexas.edu\" \"mebarondeau@utexas.edu\"\n")
+        f.write("EMAIL_SENDER=\"mebarondeau@utexas.edu\"\n")
+        f.write("EMAIL_RECIPIENT=\"mebarondeau@utexas.edu\"\n")
+        f.write("EMAIL_SUBJECT=\"PerfCount Data Collection Completed on $HOSTNAME\"\n")
+        f.write("EMAIL_BODY=\"The data collection workloads have completed successfully.\n")
+        f.write("\n")
+        f.write("Hostname: $HOSTNAME\n")
+        f.write("End Time: $END_TIME\n")
+        f.write("Script: arm_edge_heterogeneous/collection.sh\n")
+        f.write("Working Directory: $(pwd)\n")
+        f.write("\n")
+        f.write("All SPEC benchmarks have been processed.\n")
+        f.write("\"\n")
+        f.write("\n")
+        f.write("echo \"$EMAIL_BODY\" | mail -s \"$EMAIL_SUBJECT\" -r \"$EMAIL_SENDER\" \"$EMAIL_RECIPIENT\"\n")
+        f.write("\n")
+        f.write("echo \"Data collection completed at $END_TIME\"\n")
 
     st = os.stat(output_file)
     os.chmod(output_file, st.st_mode | stat.S_IEXEC)
