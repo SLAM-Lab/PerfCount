@@ -11,7 +11,7 @@ if __name__ == "__main__":
         503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
     ]
     
-    frequencies = ["3.0"] # Adjust as needed
+    frequencies = ["4.0"] # Adjust as needed
     p_cpus = [0]          # P-core
     e_cpus = [16]         # E-core
     spec_dir = "../../../benchmarks/spec"
@@ -21,7 +21,7 @@ if __name__ == "__main__":
         count = 0
 
         # --- SPEC P-Core Collection ---
-        for run_number in range(0, 17):  
+        for run_number in range(0, 8):
             for freq in frequencies:
                 for cpu in p_cpus:
                     for benchmark in spec_benchmarks:
@@ -36,7 +36,7 @@ if __name__ == "__main__":
                         count += 1
 
         # --- SPEC E-Core Collection ---
-        for run_number in range(0, 17):  
+        for run_number in range(0, 8):
             for freq in frequencies:
                 for cpu in e_cpus:
                     for benchmark in spec_benchmarks:

@@ -11,7 +11,7 @@ if __name__ == "__main__":
         'jython', 'kafka', 'luindex', 'lusearch', 'pmd', 'spring', 'sunflow', 'tomcat', 'tradebeans', 'tradesoap', 'xalan', 'zxing'
     ]
 
-    frequencies = ["3.0"] 
+    frequencies = ["4.0"] 
     p_cpus = [0]
     e_cpus = [16]
     dacapo_dir = "../../../benchmarks/dacapo"
