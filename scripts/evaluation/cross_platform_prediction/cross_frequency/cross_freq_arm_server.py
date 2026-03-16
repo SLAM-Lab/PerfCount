@@ -31,14 +31,15 @@ def extract_features_dynamic(df, suffix=""):
     X["cpi"] = df[col_cycles] / (vec_instr.fillna(1e-9))
 
     # Strict whitelist of columns provided by the user
-    # (Excludes sample_index completely to prevent data leakage)
+    # (Excludes sample_index, instructions, and cpu_cycles completely)
     hardware_events = [
-        "branch_misses", "branches", "bus_access", "dtlb_loads", 
+        "branch_misses", "branches", "bus_access", "cache_misses", 
+        "cache_references", "dtlb_load_misses", "dtlb_loads", 
         "itlb-load-misses", "itlb-loads", "l1-dcache-load-misses", 
-        "l1-dcache-loads", "l1_icache_loads", "l1d_cache", 
-        "l1d_cache_refill", "l1d_cache_wb", "l1i_cache", 
-        "l1i_cache_refill", "llc_loads", "llc_misses", 
-        "mem_access", "stalled_backend", "stalled_frontend"
+        "l1-dcache-loads", "l1_icache_load_misses", "l1_icache_loads", 
+        "l1d_cache", "l1d_cache_refill", "l1d_cache_wb", "l1i_cache", 
+        "l1i_cache_refill", "l2d_cache", "l2d_cache_refill", "l2d_cache_wb", 
+        "mem_access", "stalled_cycles_backend", "stalled_cycles_frontend"
     ]
 
     # Convert raw counts to stable rates
@@ -82,7 +83,7 @@ def process_fold(test_bench, train_dfs, test_df, freq_ratio, target_key, out_dir
             loss_function='RMSE',
             verbose=False,
             allow_writing_files=False,
-            thread_count=8
+            thread_count=4
         )
         
         model.fit(X_tr, y_tr, eval_set=(X_val, y_val), early_stopping_rounds=100)
