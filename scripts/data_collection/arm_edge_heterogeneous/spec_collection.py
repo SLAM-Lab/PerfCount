@@ -13,7 +13,7 @@ if __name__ == "__main__":
     
     # Heterogeneous Edge Setup
     frequencies = ["2.0"]
-    cpus = [4, 7]
+    cpus = [4]
     spec_dir = "../../../benchmarks/spec"
 
     with open(output_file, "w") as f:
@@ -21,7 +21,7 @@ if __name__ == "__main__":
         count = 0
 
         # --- SPEC 2017 Collection ---
-        for run_number in range(0, 20):  
+        for run_number in range(0, 25):  
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
