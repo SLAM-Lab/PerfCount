@@ -1,0 +1,17 @@
+# Ignore entire benchmarks directory (prevents committing huge jars, binaries, and licensed SPEC files)
+benchmarks/
+
+# Ignore results directory (for now)
+results/
+
+# Ignore raw data and processed data
+processed_data/
+raw_data/
+
+# Ignore Python cache files
+__pycache__/
+*.pyc
+
+# Ignore VS Code workspace settings
+.vscode/
+venv/
