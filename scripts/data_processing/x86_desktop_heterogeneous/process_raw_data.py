@@ -16,12 +16,8 @@ def clean_event_name(raw_event):
     name = raw_event.rstrip(':')
     name = name.split(':')[0]
     
-    # Handle ARM specific PMU prefixes like armv8_pmuv3_0/br_pred/
-    if 'armv8_pmuv3' in name and '/' in name:
-        parts = name.split('/')
-        if len(parts) >= 2:
-            name = parts[1]
-    elif '/' in name:
+    # Strip prefixes like cpu_core/ or cpu_atom/
+    if '/' in name:
         parts = name.split('/')
         if len(parts) >= 2 and parts[1]:
             name = parts[1] 
@@ -30,59 +26,45 @@ def clean_event_name(raw_event):
 
     name = name.lower()
 
-    # Exact dictionary mapping for ARM server PMU counters
+    # Exact dictionary mapping for x86 heterogeneous counters
     mapping = {
-        'cpu-cycles': 'cpu_cycles',
-        'cycles': 'cpu_cycles',
         'instructions': 'instructions',
+        'cpu-cycles': 'cpu_cycles',
+        'bus-cycles': 'bus_cycles',
+        'fp_arith_inst_retired.scalar_single': 'fp_arith_scalar_single',
         
-        'stalled-backend-cycles': 'stalled_backend',
-        'stall_backend': 'stalled_backend',
+        'branch-loads': 'branch_loads',
+        'branch-load-misses': 'branch_load_misses',
         
-        'stalled-frontend-cycles': 'stalled_frontend',
-        'stall_frontend': 'stalled_frontend',
+        'br_inst_retired.all_branches': 'branches',
+        'br_misp_retired.all_branches': 'branch_misses',
+        'ref-cycles': 'ref_cycles',
         
-        'br_pred': 'branches',
-        'branches': 'branches',
+        'l1-dcache-loads': 'l1_dcache_loads',
+        'l1-dcache-load-misses': 'l1_dcache_load_misses',
+        'l1-dcache-stores': 'l1_dcache_stores',
         
-        'br_mis_pred': 'branch_misses',
-        'branch-misses': 'branch_misses',
-        
-        'bus_access': 'bus_access',
-        'mem_access': 'mem_access',
-        
-        'l1d_cache': 'l1d_cache',
-        'l1d_cache_refill': 'l1d_cache_refill',
-        'l1d_cache_wb': 'l1d_cache_wb',
-        
-        'l1-dcache-loads': 'l1-dcache-loads',
-        'l1-dcache-load-misses': 'l1-dcache-load-misses',
-        
-        'l1i_cache': 'l1i_cache',
-        'l1i_cache_refill': 'l1i_cache_refill',
-        
-        'l1-icache-loads': 'l1_icache_loads',
-        
+        'l1-icache-load-misses': 'l1_icache_load_misses',
         'llc-loads': 'llc_loads',
-        'll_cache_rd': 'llc_loads',
-        
         'llc-load-misses': 'llc_misses',
-        'll_cache_miss_rd': 'llc_misses',
+        
+        'cache-references': 'cache_references',
+        'cache-misses': 'cache_misses',
+        'mem-loads': 'mem_loads',
         
         'dtlb-loads': 'dtlb_loads',
-        'l1d_tlb': 'dtlb_loads',
+        'dtlb-load-misses': 'dtlb_load_misses',
+        'itlb-load-misses': 'itlb_load_misses',
         
-        'itlb-loads': 'itlb-loads',
-        'l1i_tlb': 'itlb-loads',
-        
-        'itlb-load-misses': 'itlb-load-misses',
-        'l1i_tlb_refill': 'itlb-load-misses'
+        'dtlb-stores': 'dtlb_stores',
+        'dtlb-store-misses': 'dtlb_store_misses',
+        'mem-stores': 'mem_stores'
     }
 
     if name in mapping:
         return mapping[name]
 
-    # Fallback for any other events (replaces dashes with underscores)
+    # Fallback for any other events (replaces dashes/dots with underscores)
     return name.replace('-', '_').replace('.', '_')
 
 def merge_split_blocks(df, target_instructions=10000000):
@@ -178,7 +160,7 @@ def check_block_variance(df, fname, target=10000000):
             
     return messages
 
-def parse_perf_script_output(proc_stdout, arch="arm"):
+def parse_perf_script_output(proc_stdout, arch="x86"):
     data = []
     current_interval = {}
     
@@ -244,7 +226,7 @@ def parse_perf_script_output(proc_stdout, arch="arm"):
             
     return df
 
-def process_single_file(f, out_dir, arch="arm"):
+def process_single_file(f, out_dir, arch="x86"):
     fname = os.path.basename(f)
     meta = parse_filename(fname)
     
@@ -280,7 +262,7 @@ def align_csvs(out_dir):
         print("No CSVs found to align.")
         return
 
-    # For ARM, we group only by bench, freq, and phase to match the ML script expectations
+    # Group files by Benchmark, Freq, Phase, AND CPU (to separate P-cores and E-cores)
     groups = {}
     for f in csv_files:
         fname = os.path.basename(f)
@@ -288,15 +270,18 @@ def align_csvs(out_dir):
         if match:
             bench = match.group('bench')
             freq = match.group('freq')
+            cpu = match.group('cpu')
             phase = match.group('phase')
             run = int(match.group('run')) 
             
-            key = (bench, freq, phase)
+            key = (bench, freq, phase, cpu)
             if key not in groups:
                 groups[key] = []
             groups[key].append((run, f))
 
-    for (bench, freq, phase), files_info in groups.items():
+    # Process and align each group
+    for (bench, freq, phase, cpu), files_info in groups.items():
+        # Sort by run number so Run 0 is ALWAYS processed first
         files_info.sort(key=lambda x: x[0])
         
         aligned_df = None
@@ -316,23 +301,26 @@ def align_csvs(out_dir):
             else:
                 aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
         
+        # Sort the column names alphabetically, keeping sample_index at the very front
         cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
         aligned_df = aligned_df[cols]
 
+        # Fill any NaNs from the outer merge with 0 and force cast to integers
         aligned_df = aligned_df.fillna(0).astype('int64')
 
-        # Drop the cpu identifier in the final merged file so ML script finds it correctly
-        aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_phase{phase}.csv")
+        # Save the perfectly aligned, separated by CPU core file
+        aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_cpu{cpu}_phase{phase}.csv")
         aligned_df.to_csv(aligned_out, index=False)
         print(f"Created perfectly aligned trace: {aligned_out}")
 
 def main():
     parser = argparse.ArgumentParser(description="Process raw perf .out files into CSVs in parallel and align traces.")
     
-    parser.add_argument("--raw_dir", default="../../../raw_data/arm_server", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/arm_server", help="Directory to save CSVs")
+    # Adjusted defaults for the x86 heterogeneous dataset
+    parser.add_argument("--raw_dir", default="../../../raw_data/x86_desktop_heterogeneous", help="Directory with raw .out files")
+    parser.add_argument("--out_dir", default="../../../processed_data/x86_desktop_heterogeneous", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="Number of parallel workers")
-    parser.add_argument("--arch", choices=["x86", "arm"], default="arm", help="Target architecture (default: arm)")
+    parser.add_argument("--arch", choices=["x86", "arm"], default="x86", help="Target architecture (default: x86)")
     args = parser.parse_args()
     
     os.makedirs(args.out_dir, exist_ok=True)
@@ -363,6 +351,7 @@ def main():
             
     print(f"\nDone. Processed {count} files. Skipped {skipped}.")
     
+    # Run the alignment phase
     align_csvs(args.out_dir)
 
 if __name__ == "__main__":
