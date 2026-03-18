@@ -314,7 +314,7 @@ def align_csvs(out_dir):
             if aligned_df is None:
                 aligned_df = df
             else:
-                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
+                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='left')
         
         cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
         aligned_df = aligned_df[cols]
