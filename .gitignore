@@ -6,6 +6,7 @@ results/
 
 # Ignore raw data and processed data
 processed_data/
+processed_data_100M/
 raw_data/
 
 # Ignore Python cache files
