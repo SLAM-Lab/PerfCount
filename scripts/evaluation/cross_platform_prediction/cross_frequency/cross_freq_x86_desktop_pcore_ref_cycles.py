@@ -80,7 +80,7 @@ def process_fold(test_bench, train_dfs, test_df, freq_ratio, target_key, out_dir
 
         model = CatBoostRegressor(
             iterations=1000, depth=6, learning_rate=0.05, loss_function='RMSE',
-            verbose=False, allow_writing_files=False, thread_count=6
+            verbose=False, allow_writing_files=False, thread_count=4
         )
         
         model.fit(X_tr, y_tr, eval_set=(X_val, y_val), early_stopping_rounds=100)
