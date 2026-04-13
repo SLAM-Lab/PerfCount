@@ -44,8 +44,12 @@ def main():
         config_name = f"{core_type}_{freq_ghz}GHz"
         
         try:
-            df = pd.read_csv(f, usecols=['sample_index', 'cpu_cycles'])
-            df['time_s'] = df['cpu_cycles'] / (freq_ghz * 1e9)
+            # FIX 1: Tell Pandas to load the ref_cycles column instead of cpu_cycles
+            df = pd.read_csv(f, usecols=['sample_index', 'ref_cycles'])
+            
+            # FIX 2: Calculate generic time using ref_cycles (which ticks at a constant hardware frequency)
+            df['time_s'] = df['ref_cycles'] / 1e9  
+            
             df['workload'] = workload
             df['phase'] = phase
             df['config'] = config_name
@@ -82,26 +86,17 @@ def main():
         # 4. Group by specific Workload and Phase
         for (wl, ph), group_df in pivot_df.groupby(['workload', 'phase']):
             
-            # Find which configurations actually exist for this workload/phase
             active_configs = [c for c in configs if not group_df[c].isna().all()]
             
-            # If our source config didn't run for this workload, skip
             if source_config not in active_configs:
                 continue
             
-            # --- THE FIX: TRUNCATION ---
-            # Drop any row where ANY active configuration is missing data.
-            # This perfectly clips the dataframe to the shortest trace's length.
             group_clean = group_df.dropna(subset=active_configs).copy()
-            
-            # Also filter out any mathematical 0s that could cause inf division
             group_clean = group_clean[(group_clean[active_configs] > 0).all(axis=1)]
             
-            # If the truncation left us with no data, skip
             if group_clean.empty:
                 continue
                 
-            # Create the DataFrame for this specific granular file
             res_df = group_clean[['sample_index']].copy()
             res_df[f'Time_{source_config}'] = group_clean[source_config]
             
