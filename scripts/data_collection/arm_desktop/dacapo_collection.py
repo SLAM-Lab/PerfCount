@@ -6,15 +6,40 @@ import stat
 if __name__ == "__main__":
     output_file = "dacapo_collection.sh"
    
-    # DaCapo benchmarks
-    dacapo_benchmarks = [
-        'avrora', 'batik', 'biojava', 'cassandra', 'eclipse', 'fop', 'graphchi', 'h2', 'h2o', 'jme',
-        'jython', 'kafka', 'luindex', 'lusearch', 'pmd', 'spring', 'sunflow', 'tomcat', 'tradebeans', 'tradesoap', 'xalan', 'zxing'
+    # Benchmarks that can survive the absolute strictest flags
+    strict_benchmarks = [
+        'avrora', 'batik', 'biojava', 'eclipse', 'fop', 'graphchi', 'h2', 'jme', 
+        'luindex', 'lusearch', 'pmd', 'sunflow', 'xalan', 'zxing'
+    ]
+    
+    # Massive enterprise workloads that crash under extreme constraints (e.g., spring)
+    relaxed_benchmarks = [
+        'cassandra', 'h2o', 'jython', 'kafka', 'spring', 'tomcat', 'tradebeans', 'tradesoap'
     ]
 
-    frequencies = ["3.0"] 
+    dacapo_benchmarks = strict_benchmarks + relaxed_benchmarks
+
+    frequencies = ["1.0"] 
     cpus = [0]
     dacapo_dir = "../../../benchmarks/dacapo"
+
+    # Strict Flags (Maximum Determinism ported from x86)
+    strict_flags = (
+        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
+        "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData -XX:-UseTLAB "
+        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
+    )
+
+    # Relaxed Flags (Removed UseTLAB to prevent framework crashes)
+    relaxed_flags = (
+        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
+        "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData "
+        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
+    )
 
     # 18 Hardware Counter Groups for ARM Desktop (User-Space Only)
     arm_groups = [
@@ -46,15 +71,18 @@ if __name__ == "__main__":
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in dacapo_benchmarks:
+                        
+                        # Dynamically assign strict vs relaxed flags based on the benchmark
+                        flags_to_use = strict_flags if benchmark in strict_benchmarks else relaxed_flags
+                        
                         # 1. Start perf system-wide (-a) on the target CPU (-C cpu)
                         command = f"perf record -a -C {cpu} "
                         command += f"-e \"{arm_groups[counter_group]}\" "
                         command += "-c 10000000 --no-buffering -o "
                         command += f"cpu_{cpu}_{freq}GHz_dacapo_{benchmark}_10000000_{counter_group}_0.out -- "
                         
-                        # 2. Run the Java command pinned to the same CPU with -Xcomp.
-                        command += f"taskset --cpu-list {cpu} "
-                        command += f"java -Xcomp -XX:+UseSerialGC -Xms2g -Xmx2g -XX:-UseAdaptiveSizePolicy -jar {dacapo_dir}/dacapo-23.11-MR2-chopin.jar -t 1 -n 1 -s large {benchmark}"
+                        # 2. Run the Java command pinned to the same CPU, injecting the deterministic flags and aligning to -s default
+                        command += f"taskset --cpu-list {cpu} java {flags_to_use} -jar {dacapo_dir}/dacapo-23.11-MR2-chopin.jar -s default -t 1 -n 1 {benchmark}"
                         
                         f.write(command + "\n") 
                         count += 1
@@ -68,4 +96,4 @@ if __name__ == "__main__":
     st = os.stat(output_file)
     os.chmod(output_file, st.st_mode | stat.S_IEXEC)
     
-    print(f"Generated {output_file} with {count} DaCapo commands using Per-CPU monitoring and -Xcomp.")
+    print(f"Generated {output_file} with {count} DaCapo commands using highly deterministic JVM flags.")
