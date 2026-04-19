@@ -43,24 +43,15 @@ if __name__ == "__main__":
 
     # 18 Hardware Counter Groups for ARM Desktop (User-Space Only)
     arm_groups = [
-        "{instructions,cpu-cycles,branch-instructions,branch-misses}:Su",
-        "{instructions,L1-dcache-loads,L1-dcache-load-misses,L1-icache-loads}:Su",
-        "{instructions,cache-misses,cache-references,dTLB-loads,dTLB-load-misses}:Su",
-        "{instructions,iTLB-loads,iTLB-load-misses,context-switches}:Su",
-        "{instructions,page-faults,alignment-faults,emulation-faults}:Su",
-        "{instructions,cpu-migrations,minor-faults,major-faults}:Su",
-        "{instructions,dtlb_walk,itlb_walk,armv8_pmuv3_0/branch-loads/}:Su",
-        "{instructions,armv8_pmuv3_0/branch-load-misses/,armv8_pmuv3_0/L1-dcache-loads/,armv8_pmuv3_0/L1-dcache-load-misses/}:Su",
-        "{instructions,armv8_pmuv3_0/L1-icache-loads/,armv8_pmuv3_0/L1-icache-load-misses/,armv8_pmuv3_0/dTLB-loads/}:Su",
-        "{instructions,armv8_pmuv3_0/dTLB-load-misses/,armv8_pmuv3_0/iTLB-loads/,armv8_pmuv3_0/iTLB-load-misses/}:Su",
-        "{instructions,system_time,l1d_cache,l1i_cache}:Su",
-        "{instructions,branches,branch-loads,branch-load-misses}:Su",
-        "{instructions,task-clock,cpu-clock,cs}:Su",
-        "{instructions,bx_stall,fx_stall,ixa_stall}:Su",
-        "{instructions,ixb_stall,lx_stall,decode_stall}:Su",
-        "{instructions,dispatch_stall,sx_stall,cycles}:Su",
-        "{instructions,mem_access,mem_access_rd,mem_access_wr}:Su",
-        "{instructions,memory_error,migrations,faults}:Su"
+        "{instructions,cpu-cycles,stalled-cycles-backend,stalled-cycles-frontend}:Su", 
+        "{instructions,armv8_pmuv3_0/br_pred/,armv8_pmuv3_0/br_mis_pred/,L1-dcache-loads}:Su",
+        "{instructions,L1-dcache-load-misses,armv8_pmuv3_0/l1d_cache/,armv8_pmuv3_0/l1d_cache_refill/}:Su",
+        "{instructions,armv8_pmuv3_0/l1d_cache_wb/,L1-icache-loads,L1-icache-load-misses}:Su",
+        "{instructions,armv8_pmuv3_0/l1i_cache/,armv8_pmuv3_0/l1i_cache_refill/,armv8_pmuv3_0/l2d_cache/}:Su",
+        "{instructions,armv8_pmuv3_0/l2d_cache_refill/,armv8_pmuv3_0/l2d_cache_wb/,cache-references}:Su",
+        "{instructions,cache-misses,dTLB-loads,dTLB-load-misses}:Su",
+        "{instructions,iTLB-loads,iTLB-load-misses,armv8_pmuv3_0/bus_access/}:Su",
+        "{instructions,armv8_pmuv3_0/mem_access/,armv8_pmuv3_0/memory_error/,armv8_pmuv3_0/exc_return/}:Su"
     ]
 
     with open(output_file, "w") as f:
