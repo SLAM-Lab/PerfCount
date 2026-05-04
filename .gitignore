@@ -5,7 +5,7 @@ benchmarks/
 results/
 
 # Ignore raw data and processed data
-processed_data/
+processed_data_10M/
 processed_data_100M/
 processed_data_1000M/
 raw_data/
