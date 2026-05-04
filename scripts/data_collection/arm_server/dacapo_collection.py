@@ -19,14 +19,14 @@ if __name__ == "__main__":
 
     dacapo_benchmarks = strict_benchmarks + relaxed_benchmarks
 
-    frequencies = ["3.0"] 
+    frequencies = ["1.0"] 
     cpus = [0]
     dacapo_dir = "../../../benchmarks/dacapo"
 
     # Strict Flags (Maximum Determinism ported from x86)
     strict_flags = (
         "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData -XX:-UseTLAB "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # Relaxed Flags (Removed UseTLAB to prevent framework crashes)
     relaxed_flags = (
         "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
@@ -73,7 +73,7 @@ if __name__ == "__main__":
                         command += f"cpu_{cpu}_{freq}GHz_dacapo_{benchmark}_10000000_{counter_group}_0.out -- "
                         
                         # 2. Run the Java command pinned to the same CPU, injecting the deterministic flags and aligning to -s default
-                        command += f"taskset --cpu-list {cpu} java {flags_to_use} -jar {dacapo_dir}/dacapo-23.11-MR2-chopin.jar -s default -t 1 -n 1 {benchmark}"
+                        command += f"taskset --cpu-list {cpu} java {flags_to_use} -jar {dacapo_dir}/dacapo-23.11-MR2-chopin.jar -s default -t 1 -n 1 -f 5 {benchmark}"
                         
                         f.write(command + "\n") 
                         count += 1
