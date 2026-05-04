@@ -24,21 +24,21 @@ os.environ.update({
 # 1. CONFIGURATION
 # =========================================================
 MACHINE = "arm_server"
-MAX_WORKERS = 60  
+MAX_WORKERS = 80
 EPOCHS = 50
 
 FREQS = ["1.0", "2.0", "3.0"]
 HORIZONS = [1, 2, 4, 8, 16, 32]
-TIMESTEPS = [1, 5, 10, 20, 50]
-MODELS = ["dt", "lstm", "mlp", "transformer"]
-GRANULARITIES = ["100M", "10M"]
+TIMESTEPS = [1, 10]
+MODELS = ["dt", "mlp", "lstm", "transformer"]
+GRANULARITIES = ["10M"]
 
 COUNTERS = "cpu_cycles branch_misses branches bus_access cache_misses cache_references dtlb_load_misses dtlb_loads instructions itlb-load-misses itlb-loads l1-dcache-load-misses l1-dcache-loads l1_icache_load_misses l1_icache_loads l1d_cache l1d_cache_refill l1d_cache_wb l1i_cache l1i_cache_refill l2d_cache l2d_cache_refill l2d_cache_wb mem_access stalled_cycles_backend stalled_cycles_frontend".split()
 
 # Resolve Base Paths
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../../../results/forecasting_history/"))  
-WORKLOAD_FORECASTING_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
+ROOT_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../../../../results/forecasting/logs_10M_dacapo/"))  
+WORKLOAD_FORECASTING_DIR = os.path.abspath(os.path.join(SCRIPT_DIR, "../../"))
 
 run_env = os.environ.copy()
 run_env["PYTHONPATH"] = WORKLOAD_FORECASTING_DIR
@@ -54,10 +54,10 @@ def get_all_jobs():
         # The 10M sweep uses the default 'processed_data' folder.
         # The 100M sweep uses the 'processed_data_100M' folder.
         data_folder = "processed_data" if gran == "10M" else "processed_data_100M"
-        data_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f"../../../../{data_folder}/{MACHINE}"))
+        data_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f"../../../../../{data_folder}/{MACHINE}"))
         
         for freq in FREQS:
-            search_pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz_phase*.csv")
+            search_pattern = os.path.join(data_dir, f"aligned_dacapo_*_{freq}GHz_cpu0_phase*.csv")
             csv_files = glob.glob(search_pattern)
             workloads = sorted(list(set([os.path.basename(f).replace('.csv', '') for f in csv_files])))
             
