@@ -10,43 +10,55 @@ import dvfs_policies as dvfs
 import scheduling_policies as sched
 import plotter
 import combined_policies as comb
+import warmup_model
 
 # ==========================================
 # GLOBAL HARDWARE DEFINES
 # ==========================================
+# Cache warm-up penalty parameters (fill in from warmup_params.csv after measurement).
+# Set both A values to 0.0 to verify results are identical to the no-penalty baseline.
+# To apply: call warmup_model.apply_warmup_penalty(time_mat, policy_path, configs, ...)
+# for each policy after extracting its per-chunk config path.
+WARMUP_A_PtoE   = 0.0   # amplitude:  P→E warm-up slowdown (measured via warmup_collection.sh)
+WARMUP_TAU_PtoE = 1.0   # decay time: P→E (chunks until steady-state)
+WARMUP_A_EtoP   = 0.0   # amplitude:  E→P warm-up slowdown
+WARMUP_TAU_EtoP = 1.0   # decay time: E→P (chunks)
+WARMUP_K        = 50    # number of post-migration chunks to penalize
+
 MIG_LAT_S  = 0.000100   # 100us Migration Latency
 MIG_NRG_J  = 0.000015   # 15uJ Migration Energy
 DVFS_LAT_S = 0.000040   # 40us Fallback Frequency Scale Latency
 DVFS_NRG_J = 0.000003   # 3uJ Fallback Frequency Scale Energy
 
-# Transition Latencies (microseconds) from physical measurements
+
+# DVFS transition latencies (μs), dvfs_bench_v2, 500 reps each
+# Upward transitions (voltage pre-stabilizes) ~3-7μs; downward ~10-12μs.
+# P-core 3.0→4.0 uses median (3.02μs): one outlier rep inflated mean to 5.13μs.
 P_LAT_US = {
-    (1.0, 2.0): 105.34, (1.0, 3.0): 104.38, (1.0, 4.0): 97.80,
-    (2.0, 1.0): 71.88,  (2.0, 3.0): 64.22,  (2.0, 4.0): 62.33,
-    (3.0, 1.0): 70.23,  (3.0, 2.0): 44.36,  (3.0, 4.0): 40.41,
-    (4.0, 1.0): 64.81,  (4.0, 2.0): 39.36,  (4.0, 3.0): 33.56
+    (1.0, 2.0): 5.58,  (1.0, 3.0): 3.85,  (1.0, 4.0): 3.12,
+    (2.0, 1.0): 11.06, (2.0, 3.0): 3.93,  (2.0, 4.0): 3.16,
+    (3.0, 1.0): 10.5,  (3.0, 2.0): 5.61,  (3.0, 4.0): 3.02,
+    (4.0, 1.0): 10.04, (4.0, 2.0): 5.6,   (4.0, 3.0): 3.96,
 }
-
 E_LAT_US = {
-    (1.0, 2.0): 171.41, (1.0, 3.0): 177.65, (1.0, 4.0): 165.83,
-    (2.0, 1.0): 156.87, (2.0, 3.0): 154.76, (2.0, 4.0): 152.71,
-    (3.0, 1.0): 160.40, (3.0, 2.0): 135.03, (3.0, 4.0): 134.13,
-    (4.0, 1.0): 158.26, (4.0, 2.0): 124.65, (4.0, 3.0): 101.38
+    (1.0, 2.0): 6.67,  (1.0, 3.0): 4.82,  (1.0, 4.0): 4.11,
+    (2.0, 1.0): 12.37, (2.0, 3.0): 4.88,  (2.0, 4.0): 4.17,
+    (3.0, 1.0): 10.39, (3.0, 2.0): 6.4,   (3.0, 4.0): 4.21,
+    (4.0, 1.0): 10.81, (4.0, 2.0): 7.22,  (4.0, 3.0): 5.28,
 }
 
-# Transition Energy Overhead (Joules) [Peak Watts * Stall Time]
+# DVFS transition energy (J) = Trans_P95_W × stall_latency
 P_NRG_J = {
-    (1.0, 2.0): 0.001054, (1.0, 3.0): 0.000963, (1.0, 4.0): 0.001320,
-    (2.0, 1.0): 0.000615, (2.0, 3.0): 0.000538, (2.0, 4.0): 0.000643,
-    (3.0, 1.0): 0.000480, (3.0, 2.0): 0.000387, (3.0, 4.0): 0.000398,
-    (4.0, 1.0): 0.000601, (4.0, 2.0): 0.000581, (4.0, 3.0): 0.000296
+    (1.0, 2.0): 2.1e-05,  (1.0, 3.0): 1.6e-05,  (1.0, 4.0): 1.3e-05,
+    (2.0, 1.0): 5.8e-05,  (2.0, 3.0): 2.1e-05,  (2.0, 4.0): 1.8e-05,
+    (3.0, 1.0): 8.4e-05,  (3.0, 2.0): 5.7e-05,  (3.0, 4.0): 2.6e-05,
+    (4.0, 1.0): 0.000117, (4.0, 2.0): 6.6e-05,  (4.0, 3.0): 4.7e-05,
 }
-
 E_NRG_J = {
-    (1.0, 2.0): 0.004799, (1.0, 3.0): 0.006063, (1.0, 4.0): 0.011006,
-    (2.0, 1.0): 0.004422, (2.0, 3.0): 0.004630, (2.0, 4.0): 0.009178,
-    (3.0, 1.0): 0.005030, (3.0, 2.0): 0.003821, (3.0, 4.0): 0.008694,
-    (4.0, 1.0): 0.009941, (4.0, 2.0): 0.008859, (4.0, 3.0): 0.006279
+    (1.0, 2.0): 2.3e-05,  (1.0, 3.0): 1.6e-05,  (1.0, 4.0): 1.5e-05,
+    (2.0, 1.0): 5.8e-05,  (2.0, 3.0): 2.2e-05,  (2.0, 4.0): 2.0e-05,
+    (3.0, 1.0): 7.1e-05,  (3.0, 2.0): 4.4e-05,  (3.0, 4.0): 2.9e-05,
+    (4.0, 1.0): 0.0002,   (4.0, 2.0): 0.000132, (4.0, 3.0): 9.7e-05,
 }
 
 def get_dvfs_cost(start_cfg, end_cfg):
@@ -110,46 +122,94 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs):
         
         # 1. P-Core DVFS Policies
         p_traces = {
+            # Baselines: static pinned frequencies
             'Static_P_1.0GHz': dvfs.make_static('P_1.0GHz')(*policy_args, metric=m_type),
             'Static_P_2.0GHz': dvfs.make_static('P_2.0GHz')(*policy_args, metric=m_type),
             'Static_P_3.0GHz': dvfs.make_static('P_3.0GHz')(*policy_args, metric=m_type),
             'Static_P_4.0GHz': dvfs.make_static('P_4.0GHz')(*policy_args, metric=m_type),
+            # Reactive: uses only past chunk data (causal, practical)
             'Reactive_1_Step_P': dvfs.make_reactive_1_step('P')(*policy_args, metric=m_type),
-            'Proactive_1_Step_P': dvfs.make_proactive_1_step('P')(*policy_args, metric=m_type),
-            'Proactive_N_Step_P_Window_5': dvfs.make_proactive_n_step('P', horizon=5)(*policy_args, metric=m_type),
-            'Proactive_N_Step_P_Window_10': dvfs.make_proactive_n_step('P', horizon=10)(*policy_args, metric=m_type),
-            'Proactive_P_Oracle': dvfs.make_global_viterbi('P')(*policy_args, metric=m_type),
-#            'Linux_Schedutil_Proxy': dvfs.run_linux_schedutil(*policy_args, metric=m_type),
-#            'Intel_HWP_Proxy': dvfs.run_intel_hwp(*policy_args, metric=m_type)
+            # Oracle policies: have access to current/future timing data (not practically deployable)
+            'Greedy_Oracle_P': dvfs.make_proactive_1_step('P')(*policy_args, metric=m_type),
+            'MPC_Oracle_P_W5': dvfs.make_proactive_n_step('P', horizon=5)(*policy_args, metric=m_type),
+            'MPC_Oracle_P_W10': dvfs.make_proactive_n_step('P', horizon=10)(*policy_args, metric=m_type),
+            'Global_Oracle_P': dvfs.make_global_viterbi('P')(*policy_args, metric=m_type),
+            # Industry OS governors (use proxy signal, practical)
+            'Performance_Gov_P': dvfs.run_performance_governor(*policy_args, metric=m_type),
+            'Ondemand_P': dvfs.make_ondemand('P')(*policy_args, metric=m_type),
+            'Conservative_P': dvfs.make_conservative('P')(*policy_args, metric=m_type),
+            'Schedutil_PELT_P': dvfs.make_schedutil_pelt('P')(*policy_args, metric=m_type),
+            'Intel_HWP_P': dvfs.run_intel_hwp(*policy_args, metric=m_type),
+            # Academic prediction / online learning (practical)
+            'EWMA_P': dvfs.make_ewma_dvfs('P')(*policy_args, metric=m_type),
+            'UCB1_P': dvfs.make_ucb1_dvfs('P')(*policy_args, metric=m_type),
+            'Random_P': dvfs.make_random_dvfs('P')(*policy_args, metric=m_type),
         }
-        
+
         # 2. E-Core DVFS Policies
         e_traces = {
+            # Baselines: static pinned frequencies
             'Static_E_1.0GHz': dvfs.make_static('E_1.0GHz')(*policy_args, metric=m_type),
             'Static_E_2.0GHz': dvfs.make_static('E_2.0GHz')(*policy_args, metric=m_type),
             'Static_E_3.0GHz': dvfs.make_static('E_3.0GHz')(*policy_args, metric=m_type),
             'Static_E_4.0GHz': dvfs.make_static('E_4.0GHz')(*policy_args, metric=m_type),
+            # Reactive: uses only past chunk data (causal, practical)
             'Reactive_1_Step_E': dvfs.make_reactive_1_step('E')(*policy_args, metric=m_type),
-            'Proactive_1_Step_E': dvfs.make_proactive_1_step('E')(*policy_args, metric=m_type),
-            'Proactive_N_Step_E_Window_5': dvfs.make_proactive_n_step('E', horizon=5)(*policy_args, metric=m_type),
-            'Proactive_N_Step_E_Window_10': dvfs.make_proactive_n_step('E', horizon=10)(*policy_args, metric=m_type),
-            'Proactive_E_Oracle': dvfs.make_global_viterbi('E')(*policy_args, metric=m_type)
+            # Oracle policies: have access to current/future timing data (not practically deployable)
+            'Greedy_Oracle_E': dvfs.make_proactive_1_step('E')(*policy_args, metric=m_type),
+            'MPC_Oracle_E_W5': dvfs.make_proactive_n_step('E', horizon=5)(*policy_args, metric=m_type),
+            'MPC_Oracle_E_W10': dvfs.make_proactive_n_step('E', horizon=10)(*policy_args, metric=m_type),
+            'Global_Oracle_E': dvfs.make_global_viterbi('E')(*policy_args, metric=m_type),
+            # Industry OS governors (use proxy signal, practical)
+            'Ondemand_E': dvfs.make_ondemand('E')(*policy_args, metric=m_type),
+            'Conservative_E': dvfs.make_conservative('E')(*policy_args, metric=m_type),
+            'Schedutil_PELT_E': dvfs.make_schedutil_pelt('E')(*policy_args, metric=m_type),
+            # Academic prediction / online learning (practical)
+            'EWMA_E': dvfs.make_ewma_dvfs('E')(*policy_args, metric=m_type),
+            'UCB1_E': dvfs.make_ucb1_dvfs('E')(*policy_args, metric=m_type),
+            'Random_E': dvfs.make_random_dvfs('E')(*policy_args, metric=m_type),
         }
         
         # 3. Heterogeneous Scheduling Policies (P vs E)
         hetero_traces = {
-            'Proactive_Hetero_Oracle': sched.run_proactive_hetero_oracle(*policy_args, metric=m_type)
+            # Global oracle bound (full P+E x freq Viterbi)
+            'Proactive_Hetero_Oracle': sched.run_proactive_hetero_oracle(*policy_args, metric=m_type),
+            # Iso-frequency oracles: ablation separating core selection from freq scaling
+            'IsoFreq_Oracle_1.0GHz': sched.make_global_oracle_fixed_freq('1.0GHz')(*policy_args, metric=m_type),
+            'IsoFreq_Oracle_2.0GHz': sched.make_global_oracle_fixed_freq('2.0GHz')(*policy_args, metric=m_type),
+            'IsoFreq_Oracle_3.0GHz': sched.make_global_oracle_fixed_freq('3.0GHz')(*policy_args, metric=m_type),
+            'IsoFreq_Oracle_4.0GHz': sched.make_global_oracle_fixed_freq('4.0GHz')(*policy_args, metric=m_type),
+            # Industry: Linux EAS variants
+            'EAS_Hetero': sched.make_eas_hetero()(*policy_args, metric=m_type),
+            'EAS_With_DVFS': sched.make_eas_with_dvfs()(*policy_args, metric=m_type),
+            # Industry: ARM big.LITTLE hysteresis migration
+            'Threshold_Migration': sched.make_threshold_migration()(*policy_args, metric=m_type),
+            # Industry: Intel Thread Director classification + DVFS
+            'Thread_Director': sched.make_thread_director()(*policy_args, metric=m_type),
+            # Simplified EAS (2-config reactive baseline)
+            'Micro_EAS': sched.run_micro_eas(*policy_args, metric=m_type),
+            # Online learning across full P+E space
+            'UCB1_Hetero': sched.make_ucb1_hetero()(*policy_args, metric=m_type),
         }
         
         # 4. Combined DVFS + Migration Policies
         combined_traces = {
-            'Reactive_N_Step_Combined_Window_1': comb.make_reactive_n_step_combined(lookback=1)(*policy_args, metric=m_type),
-            'Reactive_N_Step_Combined_Window_5': comb.make_reactive_n_step_combined(lookback=5)(*policy_args, metric=m_type),
-            'Reactive_N_Step_Combined_Window_10': comb.make_reactive_n_step_combined(lookback=10)(*policy_args, metric=m_type),
-            'Proactive_N_Step_Combined_Window_1': comb.make_proactive_n_step_combined(horizon=1)(*policy_args, metric=m_type),
-            'Proactive_N_Step_Combined_Window_5': comb.make_proactive_n_step_combined(horizon=5)(*policy_args, metric=m_type),
-            'Proactive_N_Step_Combined_Window_10': comb.make_proactive_n_step_combined(horizon=10)(*policy_args, metric=m_type),
-            'Proactive_Hetero_Oracle': hetero_traces['Proactive_Hetero_Oracle'] # Compare against absolute optimal
+            # Reactive history-lookback (practical, causal)
+            'Reactive_Combined_W1': comb.make_reactive_n_step_combined(lookback=1)(*policy_args, metric=m_type),
+            'Reactive_Combined_W5': comb.make_reactive_n_step_combined(lookback=5)(*policy_args, metric=m_type),
+            'Reactive_Combined_W10': comb.make_reactive_n_step_combined(lookback=10)(*policy_args, metric=m_type),
+            # MPC oracle lookahead (requires future timing data)
+            'MPC_Oracle_Combined_W1': comb.make_proactive_n_step_combined(horizon=1)(*policy_args, metric=m_type),
+            'MPC_Oracle_Combined_W5': comb.make_proactive_n_step_combined(horizon=5)(*policy_args, metric=m_type),
+            'MPC_Oracle_Combined_W10': comb.make_proactive_n_step_combined(horizon=10)(*policy_args, metric=m_type),
+            # Industry hetero policies shown alongside MPC for direct comparison
+            'EAS_Hetero': hetero_traces['EAS_Hetero'],
+            'EAS_With_DVFS': hetero_traces['EAS_With_DVFS'],
+            'Threshold_Migration': hetero_traces['Threshold_Migration'],
+            'Thread_Director': hetero_traces['Thread_Director'],
+            'UCB1_Hetero': hetero_traces['UCB1_Hetero'],
+            # Oracle bound
+            'Proactive_Hetero_Oracle': hetero_traces['Proactive_Hetero_Oracle'],
         }
 
         # Aggregate Results

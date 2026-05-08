@@ -130,37 +130,17 @@ def make_global_viterbi(core_type):
         return trace
     return policy
 
-def run_reactive_p_dvfs(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+def run_performance_governor(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+    """Linux 'performance' CPUfreq governor: always pins to maximum frequency."""
     n_chunks = len(time_mat)
-    m_mat = energy_mat * (time_mat**(2 if metric == 'ED2P' else 1))
     p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
     if not p_idx: return np.zeros(n_chunks)
-    
-    curr = p_idx[-1]
-    trace, cum_m = np.zeros(n_chunks), 0.0
-    for i in range(n_chunks):
-        if i > 0: 
-            prev = curr
-            curr = p_idx[np.argmin(m_mat[i-1, p_idx])]
-            lat, nrg = trans_lat[prev, curr], trans_nrg[prev, curr]
-        else:
-            lat, nrg = 0, 0
-        step_t = lat + time_mat[i, curr]
-        step_e = nrg + energy_mat[i, curr]
-        cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-        trace[i] = cum_m
-    return trace
 
-def run_linux_schedutil(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-    n_chunks = len(time_mat)
-    p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-    if not p_idx: return np.zeros(n_chunks)
-    
     curr = p_idx[-1]
     trace, cum_m = np.zeros(n_chunks), 0.0
     for i in range(n_chunks):
         prev = curr
-        curr = p_idx[-1] # Schedutil pegs to max
+        curr = p_idx[-1]
         lat = trans_lat[prev, curr] if i > 0 else 0
         nrg = trans_nrg[prev, curr] if i > 0 else 0
         step_t = lat + time_mat[i, curr]
@@ -240,5 +220,227 @@ def make_proactive_n_step(core_type, horizon):
             cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
             trace[i] = cum_m
             prev_idx = best_action
+        return trace
+    return policy
+
+# ==========================================
+# 5. LINUX ONDEMAND GOVERNOR
+# ==========================================
+def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20):
+    """
+    Linux 'ondemand' CPUfreq governor (Pallipadi & Starikovskiy, OLS 2006).
+    Jumps to max frequency when normalized proxy utilization exceeds up_thresh;
+    drops to min frequency when below down_thresh; otherwise holds current level.
+    Proxy signal is normalized to [0,1] via clip((proxy-1)/2.5).
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+
+        curr = idx_list[-1]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            prev = curr
+            if i > 0:
+                util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
+                if util >= up_thresh:
+                    curr = idx_list[-1]
+                elif util <= down_thresh:
+                    curr = idx_list[0]
+
+            lat = trans_lat[prev, curr] if i > 0 else 0
+            nrg = trans_nrg[prev, curr] if i > 0 else 0
+            step_t = lat + time_mat[i, curr]
+            step_e = nrg + energy_mat[i, curr]
+            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+            trace[i] = cum_m
+        return trace
+    return policy
+
+# ==========================================
+# 6. LINUX CONSERVATIVE GOVERNOR
+# ==========================================
+def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20):
+    """
+    Linux 'conservative' CPUfreq governor.
+    Steps frequency up or down by exactly one level per interval, avoiding the
+    large transition costs of ondemand's jumps to max/min.
+    Reference: Linux kernel CPUfreq documentation.
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+
+        level = len(idx_list) - 1
+        prev_cfg = idx_list[level]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            if i > 0:
+                util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
+                if util >= up_thresh:
+                    level = min(level + 1, len(idx_list) - 1)
+                elif util <= down_thresh:
+                    level = max(level - 1, 0)
+
+            curr_cfg = idx_list[level]
+            lat = trans_lat[prev_cfg, curr_cfg] if i > 0 else 0
+            nrg = trans_nrg[prev_cfg, curr_cfg] if i > 0 else 0
+            step_t = lat + time_mat[i, curr_cfg]
+            step_e = nrg + energy_mat[i, curr_cfg]
+            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+            trace[i] = cum_m
+            prev_cfg = curr_cfg
+        return trace
+    return policy
+
+# ==========================================
+# 7. LINUX SCHEDUTIL (PELT-Based)
+# ==========================================
+def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25):
+    """
+    Linux 'schedutil' governor with PELT-style EWMA utilization tracking
+    (Linux kernel v4.7+; Rafał Miłecki, Viresh Kumar, Rafael Wysocki).
+    Smooths the proxy utilization signal via EWMA, then selects the minimum
+    frequency level satisfying: freq >= util_ewma * headroom * max_freq.
+    alpha controls EWMA decay; headroom (>1.0) reserves margin above predicted load.
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+
+        util_ewma = 1.0
+        curr = idx_list[-1]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            prev = curr
+            if i > 0:
+                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
+                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+                target_ratio = min(util_ewma * headroom, 1.0)
+                target_level = int(np.round(target_ratio * (len(idx_list) - 1)))
+                curr = idx_list[np.clip(target_level, 0, len(idx_list) - 1)]
+
+            lat = trans_lat[prev, curr] if i > 0 else 0
+            nrg = trans_nrg[prev, curr] if i > 0 else 0
+            step_t = lat + time_mat[i, curr]
+            step_e = nrg + energy_mat[i, curr]
+            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+            trace[i] = cum_m
+        return trace
+    return policy
+
+# ==========================================
+# 8. EWMA PREDICTOR (Weiser et al., 1994)
+# ==========================================
+def make_ewma_dvfs(core_type, alpha=0.5):
+    """
+    EWMA-based DVFS from Weiser et al., "Scheduling for Reduced CPU Energy" (OSDI 1994).
+    Predicts next-interval utilization via exponentially weighted moving average of the
+    proxy signal, then runs at the minimum frequency sufficient for that prediction.
+    alpha controls how quickly the predictor tracks changes (higher = more reactive).
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+
+        pred = 1.0
+        curr = idx_list[-1]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            prev = curr
+            if i > 0:
+                actual = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
+                pred = alpha * actual + (1.0 - alpha) * pred
+                target_level = int(np.ceil(pred * (len(idx_list) - 1)))
+                curr = idx_list[np.clip(target_level, 0, len(idx_list) - 1)]
+
+            lat = trans_lat[prev, curr] if i > 0 else 0
+            nrg = trans_nrg[prev, curr] if i > 0 else 0
+            step_t = lat + time_mat[i, curr]
+            step_e = nrg + energy_mat[i, curr]
+            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+            trace[i] = cum_m
+        return trace
+    return policy
+
+# ==========================================
+# 9. UCB1 ONLINE BANDIT DVFS
+# ==========================================
+def make_ucb1_dvfs(core_type, c=1.0):
+    """
+    UCB1 multi-armed bandit DVFS (Auer et al., Machine Learning 2002).
+    Treats each available frequency as a bandit arm; reward is the negative
+    per-chunk EDP/ED2P cost, normalized online by the running maximum to keep
+    UCB confidence bounds scaled correctly across workloads.
+    Initialization: round-robins through all arms once before exploiting.
+    c controls the exploration-exploitation tradeoff (larger = more exploration).
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+        n_arms = len(idx_list)
+
+        counts = np.zeros(n_arms)
+        values = np.zeros(n_arms)   # Mean normalized reward per arm
+        max_cost_seen = 1e-12       # Running normalizer to keep rewards in [-1, 0]
+
+        curr = idx_list[-1]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            prev = curr
+            if i < n_arms:
+                arm = i  # Round-robin initialization: try each frequency once
+            else:
+                ucb = values + c * np.sqrt(2.0 * np.log(i) / counts)
+                arm = int(np.argmax(ucb))
+
+            curr = idx_list[arm]
+            lat = trans_lat[prev, curr] if i > 0 else 0
+            nrg = trans_nrg[prev, curr] if i > 0 else 0
+            step_t = lat + time_mat[i, curr]
+            step_e = nrg + energy_mat[i, curr]
+            step_m = step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+
+            max_cost_seen = max(max_cost_seen, step_m)
+            reward = -step_m / max_cost_seen
+            counts[arm] += 1
+            values[arm] += (reward - values[arm]) / counts[arm]
+
+            cum_m += step_m
+            trace[i] = cum_m
+        return trace
+    return policy
+
+# ==========================================
+# 10. RANDOM POLICY (Lower Bound)
+# ==========================================
+def make_random_dvfs(core_type, seed=42):
+    """
+    Random frequency selection within the specified core cluster.
+    Serves as a lower bound for online learning policies (UCB1, EWMA).
+    A fixed seed ensures reproducibility across workloads and metric types.
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+        rng = np.random.default_rng(seed)
+        n_chunks = len(time_mat)
+        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+        if not idx_list: return np.zeros(n_chunks)
+
+        curr = idx_list[-1]
+        trace, cum_m = np.zeros(n_chunks), 0.0
+        for i in range(n_chunks):
+            prev = curr
+            curr = idx_list[rng.integers(len(idx_list))]
+            lat = trans_lat[prev, curr] if i > 0 else 0
+            nrg = trans_nrg[prev, curr] if i > 0 else 0
+            step_t = lat + time_mat[i, curr]
+            step_e = nrg + energy_mat[i, curr]
+            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+            trace[i] = cum_m
         return trace
     return policy

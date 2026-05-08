@@ -22,20 +22,20 @@ def main():
     granular_dir = output_path / "granular_phase_traces"
     granular_dir.mkdir(exist_ok=True)
 
-    # Regex to extract metadata
-    pattern = re.compile(r"aligned_spec_(.+)_([0-9.]+)GHz_cpu(\d+)_phase(\d+)\.csv")
+    # FIX 1: Updated Regex to capture anything after 'aligned_' as the workload name
+    pattern = re.compile(r"aligned_(.+)_([0-9.]+)GHz_cpu(\d+)_phase(\d+)\.csv")
     
     all_data = []
     files_processed = 0
 
     print(f"Scanning directory: {input_path}")
     
-    # 1. Read files and extract variables
-    for f in input_path.glob("aligned_spec_*.csv"):
+    # FIX 2: Updated the glob to scan for all 'aligned_' files
+    for f in input_path.glob("aligned_*.csv"):
         match = pattern.match(f.name)
         if not match: continue
             
-        workload = match.group(1)
+        workload = match.group(1) # This will now be 'spec_500.perlbench_r' or 'dacapo_avrora'
         freq_ghz = float(match.group(2))
         cpu_id = match.group(3)
         phase = match.group(4) 
@@ -44,10 +44,10 @@ def main():
         config_name = f"{core_type}_{freq_ghz}GHz"
         
         try:
-            # FIX 1: Tell Pandas to load the ref_cycles column instead of cpu_cycles
+            # Tell Pandas to load the ref_cycles column instead of cpu_cycles
             df = pd.read_csv(f, usecols=['sample_index', 'ref_cycles'])
             
-            # FIX 2: Calculate generic time using ref_cycles (which ticks at a constant hardware frequency)
+            # Calculate generic time using ref_cycles (which ticks at a constant hardware frequency)
             df['time_s'] = df['ref_cycles'] / 1e9  
             
             df['workload'] = workload
