@@ -9,6 +9,8 @@ construction rules, and evaluation protocol are therefore identical
 across cross_freq_arm, cross_freq_x86, cross_proc, and cross_sys.
 """
 
+import os
+
 import numpy as np
 import pandas as pd
 from catboost import CatBoostRegressor
@@ -42,10 +44,20 @@ def add_feature_args(parser):
     g.add_argument("--rolling_window", type=int, default=0,
                    help="Rolling-mean window size applied to key rates. 0 = disabled.")
 
-    g.add_argument("--jobs", type=int, default=20,
+    g.add_argument("--jobs", type=int, default=18,
                    help="Parallel joblib workers")
-    g.add_argument("--strict_loocv", action="store_true",
-                   help="Group all phases of the same workload into the test set")
+    g.add_argument("--strict_loocv", action="store_true", default=True,
+                   help="Group all phases of the same workload into the test set (default: on)")
+    g.add_argument("--no_strict_loocv", dest="strict_loocv", action="store_false")
+
+    g.add_argument("--exclude_features", nargs="+", default=[],
+                   help="Feature names to drop from X after construction "
+                        "(e.g. ixb_stall_rate sx_stall_rate).")
+
+    g.add_argument("--equal_weight", action="store_true", default=False,
+                   help="Weight training samples so every workload contributes equally "
+                        "regardless of trace length (1/len per sample). "
+                        "Prevents long workloads from dominating the fit.")
 
     return parser
 
@@ -67,8 +79,8 @@ class LinearMAPE:
         return False  # lower is better
 
     def evaluate(self, approxes, target, weight):
-        preds   = np.exp(approxes[0])
-        actuals = np.exp(target)
+        preds      = np.exp(approxes[0])
+        actuals    = np.exp(target)
         error_sum  = np.sum(np.abs((actuals - preds) / (actuals + 1e-9)))
         weight_sum = len(actuals)
         return error_sum, weight_sum
@@ -114,7 +126,7 @@ def build_model(cat_features=None):
         od_wait         = 100,
         verbose         = False,
         allow_writing_files = False,
-        thread_count    = 4,
+        thread_count    = 6,
     )
 
 
@@ -260,6 +272,10 @@ def build_features(df, suffix, args):
         choices = ["Memory_Bound", "Frontend_Bound"]
         X["bottleneck_class"] = np.select(conditions, choices, default="Compute_Bound")
 
+    # --- Exclude specific features if requested ---
+    if hasattr(args, "exclude_features") and args.exclude_features:
+        X = X.drop(columns=[c for c in args.exclude_features if c in X.columns])
+
     # --- Rolling window (applied in-place to selected rate columns) ---
     if args.rolling_window > 0:
         w = args.rolling_window
@@ -274,7 +290,10 @@ def build_features(df, suffix, args):
 
 def cat_feature_names(args):
     """Return the list of categorical feature names active under current args."""
-    return ["bottleneck_class"] if args.use_bottleneck_class else []
+    excluded = getattr(args, "exclude_features", []) or []
+    if args.use_bottleneck_class and "bottleneck_class" not in excluded:
+        return ["bottleneck_class"]
+    return []
 
 
 # =============================================================================
@@ -375,7 +394,44 @@ def compute_metrics(y_true, y_pred, weights=None):
 
 
 # =============================================================================
-# 6.  LOOCV DISPATCHER
+# 6.  FOLD RESUME HELPER
+# =============================================================================
+
+def load_fold_if_done(out_dir, test_bench, freq_ratio):
+    """
+    If predictions_{test_bench}.csv already exists in out_dir, recompute and
+    return the metrics dict from it without retraining. Returns None otherwise.
+    """
+    pred_path = os.path.join(out_dir, f"predictions_{test_bench}.csv")
+    if not os.path.exists(pred_path):
+        return None
+    try:
+        df = pd.read_csv(pred_path)
+        if df.empty or "target_actual" not in df.columns:
+            return None
+        y_true = df["target_actual"].values
+        y_pred = df["target_predicted"].values
+        y_src  = df["source_val"].values
+        m_ml    = compute_metrics(y_true, y_pred)
+        m_copy  = compute_metrics(y_true, y_src)
+        m_scale = compute_metrics(y_true, y_src * freq_ratio)
+        print(f"  [SKIP] '{test_bench}' already complete, loading from CSV.")
+        return {
+            "bench":       test_bench,
+            "wmape":       m_ml["wmape"],
+            "mape":        m_ml["mape"],
+            "mdape":       m_ml["mdape"],
+            "wmape_copy":  m_copy["wmape"],
+            "mape_copy":   m_copy["mape"],
+            "wmape_scale": m_scale["wmape"],
+            "mape_scale":  m_scale["mape"],
+        }
+    except Exception:
+        return None
+
+
+# =============================================================================
+# 7.  LOOCV DISPATCHER
 #     Shared strict / non-strict leave-one-out cross-validation logic.
 # =============================================================================
 
@@ -435,8 +491,10 @@ def run_loocv(bench_dfs, process_fold_fn, args, extra_kwargs=None):
     """
     Execute LOOCV and return a list of result dicts (None results dropped).
 
-    Uses multiprocessing backend; n_jobs taken from args.jobs.
+    Uses loky backend (robust to OOM-killed workers); n_jobs taken from args.jobs.
+    Falls back to sequential execution if any worker process is lost.
     """
+    extra_kwargs = extra_kwargs or {}
     tasks = build_loocv_tasks(bench_dfs, process_fold_fn, args, extra_kwargs)
     if not tasks:
         return []
@@ -444,8 +502,42 @@ def run_loocv(bench_dfs, process_fold_fn, args, extra_kwargs=None):
     print(f"  Dispatching {len(tasks)} LOOCV tasks (strict={args.strict_loocv}, "
           f"jobs={args.jobs})...")
 
-    results = Parallel(n_jobs=args.jobs, verbose=0, backend="multiprocessing")(tasks)
-    return [r for r in results if r is not None]
+    try:
+        results = Parallel(n_jobs=args.jobs, verbose=0, backend="loky")(tasks)
+        return [r for r in results if r is not None]
+    except Exception as e:
+        print(f"  [ERROR] Parallel execution failed ({type(e).__name__}: {e})")
+        print("  Retrying sequentially...")
+
+    # Sequential fallback: rebuild tasks as plain calls to avoid re-pickling issues
+    valid_benches = sorted(bench_dfs.keys())
+    results = []
+    if args.strict_loocv:
+        groups = {}
+        for b in valid_benches:
+            groups.setdefault(b.split("_phase")[0], []).append(b)
+        for base_name, t_benches in groups.items():
+            train_benches = [b for b in valid_benches if b not in t_benches]
+            if not train_benches:
+                continue
+            train_dfs = [bench_dfs[x] for x in train_benches]
+            test_df   = pd.concat([bench_dfs[x] for x in t_benches], ignore_index=True)
+            try:
+                r = process_fold_fn(base_name, train_dfs, test_df, args, **extra_kwargs)
+                if r is not None:
+                    results.append(r)
+            except Exception as e:
+                print(f"  [WARN] Sequential fold '{base_name}' failed: {e}")
+    else:
+        for b in valid_benches:
+            train_dfs = [bench_dfs[x] for x in valid_benches if x != b]
+            try:
+                r = process_fold_fn(b, train_dfs, bench_dfs[b], args, **extra_kwargs)
+                if r is not None:
+                    results.append(r)
+            except Exception as e:
+                print(f"  [WARN] Sequential fold '{b}' failed: {e}")
+    return results
 
 
 # =============================================================================
@@ -458,7 +550,7 @@ def print_summary(results, label=""):
         print("  No results to report.")
         return pd.DataFrame()
 
-    df = pd.DataFrame(results).sort_values("wmape", ascending=False)
+    df = pd.DataFrame(results).sort_values("mape", ascending=False)
     header = f"  RESULTS{' — ' + label if label else ''}"
     print("\n" + "=" * 60)
     print(header)
@@ -474,3 +566,28 @@ def print_summary(results, label=""):
             print(f"  Mean {metric.upper():6s}: {df[metric].mean():.2f}%")
 
     return df
+
+
+def save_feature_importance(results, out_dir):
+    """
+    Average feature importances across LOOCV folds and write feature_importance.csv.
+
+    Folds that were loaded from cache (no 'feature_importances' key) are skipped;
+    the average is computed over whichever folds did train a fresh model.
+    """
+    imp_dicts = [
+        r["feature_importances"] for r in results
+        if r is not None and r.get("feature_importances") is not None
+    ]
+    if not imp_dicts:
+        return
+
+    avg_imp = (
+        pd.DataFrame(imp_dicts)
+        .fillna(0.0)
+        .mean()
+        .sort_values(ascending=False)
+        .reset_index()
+    )
+    avg_imp.columns = ["feature", "importance"]
+    avg_imp.to_csv(os.path.join(out_dir, "feature_importance.csv"), index=False)

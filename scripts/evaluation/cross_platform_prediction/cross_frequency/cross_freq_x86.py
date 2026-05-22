@@ -12,6 +12,14 @@ Typical usage
 # All CPUs, all defaults
 python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86
 
+# DaCapo benchmarks only
+python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
+       --suite dacapo
+
+# SPEC benchmarks only
+python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
+       --suite spec
+
 # P-cores only (cpu0)
 python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
        --target_cpu 0
@@ -43,8 +51,10 @@ from shared_features import (
     cat_feature_names,
     prepare_bench_df,
     compute_metrics,
+    load_fold_if_done,
     run_loocv,
     print_summary,
+    save_feature_importance,
 )
 
 
@@ -67,10 +77,23 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 
     Returns
     -------
-    dict with bench, wmape, mape, mdape, wmape_copy, wmape_scale, best_iteration
+    dict with bench, mape, mdape, mape_copy, mape_scale
     """
     try:
+        cached = load_fold_if_done(out_dir, test_bench, freq_ratio)
+        if cached is not None:
+            return cached
+
         train_full = pd.concat(train_dfs, ignore_index=True)
+
+        # Per-workload equal weighting: each workload contributes total weight 1
+        # regardless of trace length, so short workloads are not drowned out.
+        if getattr(args, "equal_weight", False):
+            sample_weights = np.concatenate(
+                [np.full(len(df), 1.0 / len(df)) for df in train_dfs]
+            )
+        else:
+            sample_weights = None
 
         X_train = build_features(train_full, suffix="_src", args=args)
         X_test  = build_features(test_df,    suffix="_src", args=args)
@@ -78,20 +101,18 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         if X_train.empty or X_test.empty:
             return None
 
-        # Align columns (zero-pad any counter absent in test)
         for c in X_train.columns:
             if c not in X_test.columns:
                 X_test[c] = 0
         X_test = X_test[X_train.columns]
 
-        # Log-ratio target
         src_clean   = train_full["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_train = train_full["target_y"] / src_clean
         y_train_log = np.log(np.clip(ratio_train, 0.05, 50.0))
 
-        src_clean_t  = test_df["source_val"].replace(0, np.nan).fillna(1e-9)
-        ratio_test   = test_df["target_y"] / src_clean_t
-        y_test_log   = np.log(np.clip(ratio_test, 0.05, 50.0))
+        src_clean_t = test_df["source_val"].replace(0, np.nan).fillna(1e-9)
+        ratio_test  = test_df["target_y"] / src_clean_t
+        y_test_log  = np.log(np.clip(ratio_test, 0.05, 50.0))
 
         cat_feats = cat_feature_names(args)
         model     = build_model(cat_feats)
@@ -100,7 +121,10 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
             X_train, y_train_log,
             eval_set=(X_test, y_test_log),
             early_stopping_rounds=200,
+            sample_weight=sample_weights,
         )
+
+        importances = dict(zip(X_train.columns.tolist(), model.get_feature_importance()))
 
         # Predictions
         pred_log    = model.predict(X_test)
@@ -125,13 +149,15 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         }).to_csv(os.path.join(out_dir, f"predictions_{test_bench}.csv"), index=False)
 
         return {
-            "bench":          test_bench,
-            "wmape":          m_ml["wmape"],
-            "mape":           m_ml["mape"],
-            "mdape":          m_ml["mdape"],
-            "wmape_copy":     m_copy["wmape"],
-            "wmape_scale":    m_scale["wmape"],
-            "best_iteration": model.get_best_iteration(),
+            "bench":               test_bench,
+            "wmape":               m_ml["wmape"],
+            "mape":                m_ml["mape"],
+            "mdape":               m_ml["mdape"],
+            "wmape_copy":          m_copy["wmape"],
+            "mape_copy":           m_copy["mape"],
+            "wmape_scale":         m_scale["wmape"],
+            "mape_scale":          m_scale["mape"],
+            "feature_importances": importances,
         }
 
     except Exception as e:
@@ -189,6 +215,15 @@ def load_x86_data(data_dir, target_cpu=None):
 # 3.  FREQUENCY-PAIR RUNNER
 # =============================================================================
 
+def _suite_prefix(bench_name):
+    """Return 'dacapo', 'spec', or 'other' for a bench_phase key."""
+    if bench_name.startswith("dacapo_"):
+        return "dacapo"
+    if bench_name.startswith("spec_"):
+        return "spec"
+    return "other"
+
+
 def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
     """
     Build and evaluate LOOCV for one (src_freq -> tgt_freq) direction.
@@ -196,6 +231,9 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
     benches_at_src = {k[1] for k in data_map if k[0] == src_freq}
     benches_at_tgt = {k[1] for k in data_map if k[0] == tgt_freq}
     common = sorted(benches_at_src & benches_at_tgt)
+
+    if args.suite != "all":
+        common = [b for b in common if _suite_prefix(b) == args.suite]
 
     if len(common) < 2:
         print(f"  Skipping {src_freq}->{tgt_freq}: only {len(common)} common workload(s).")
@@ -231,12 +269,16 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
 
     df_res = print_summary(results, label=f"{src_freq} GHz → {tgt_freq} GHz")
     df_res.to_csv(os.path.join(direction_dir, "per_fold_results.csv"), index=False)
+    save_feature_importance(results, direction_dir)
 
     return {
         "pair":        f"{src_freq}->{tgt_freq}",
         "wmape_ml":    df_res["wmape"].mean(),
+        "mape_ml":     df_res["mape"].mean(),
         "wmape_copy":  df_res["wmape_copy"].mean(),
+        "mape_copy":   df_res["mape_copy"].mean(),
         "wmape_scale": df_res["wmape_scale"].mean(),
+        "mape_scale":  df_res["mape_scale"].mean(),
         "n_folds":     len(df_res),
     }
 
@@ -256,6 +298,9 @@ def main():
     parser.add_argument("--target_cpu", type=str, default=None,
                         help="Filter to a specific CPU ID (e.g. '0' for P-cores, '16' for E-cores). "
                              "Leave unset to use all CPUs in the directory.")
+    parser.add_argument("--suite", choices=["all", "dacapo", "spec"], default="all",
+                        help="Benchmark suite to include in LOOCV folds: "
+                             "'all' (default), 'dacapo', or 'spec'.")
     add_feature_args(parser)
     args = parser.parse_args()
 
@@ -265,7 +310,7 @@ def main():
     print(f"  Feature flags  | mpki={args.use_mpki}  miss_rates={args.use_miss_rates}  "
           f"stall_rates={args.use_stall_rates}  bottleneck={args.use_bottleneck_class}  "
           f"rolling_window={args.rolling_window}")
-    print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}")
+    print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}  suite={args.suite}  equal_weight={args.equal_weight}")
     print(f"{'='*60}\n")
 
     data_map = load_x86_data(args.data_dir, target_cpu=args.target_cpu)
@@ -282,7 +327,11 @@ def main():
             if src == tgt:
                 continue
             print(f"\n  --- {src} GHz  →  {tgt} GHz ---")
-            res = run_freq_pair(data_map, src, tgt, args, args.out_dir)
+            try:
+                res = run_freq_pair(data_map, src, tgt, args, args.out_dir)
+            except Exception as e:
+                print(f"  [ERROR] Pair {src}->{tgt} failed: {e}")
+                res = None
             if res:
                 all_summary.append(res)
 
