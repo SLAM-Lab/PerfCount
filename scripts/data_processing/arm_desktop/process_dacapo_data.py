@@ -344,6 +344,7 @@ def align_csvs_and_evaluate(out_dir):
 
         cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
         aligned_df = aligned_df[cols].fillna(0).astype('int64')
+        aligned_df = aligned_df[aligned_df["instructions"] > 0]
 
         aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_cpu{cpu}_phase{phase}.csv")
         aligned_df.to_csv(aligned_out, index=False)

@@ -121,6 +121,10 @@ def parse_perf_script_output(proc_stdout, arch="x86"):
         if len(parts) < 3:
             continue
 
+        # Skip C2 JIT compiler thread samples
+        if parts[0] == 'C2':
+            continue
+
         ts_idx = -1
         for i, p in enumerate(parts):
             if p.endswith(':'):
@@ -238,7 +242,7 @@ def align_csvs_and_evaluate(out_dir):
             if aligned_df is None:
                 aligned_df = df
             else:
-                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
+                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='inner')
 
         if len(instructions_across_runs) > 1:
             inst_df = pd.DataFrame(instructions_across_runs).dropna()
@@ -278,9 +282,9 @@ def align_csvs_and_evaluate(out_dir):
         print("=======================================================")
 
 def main():
-    parser = argparse.ArgumentParser(description="Process raw Dacapo perf .out files into CSVs and evaluate alignment.")
+    parser = argparse.ArgumentParser(description="Process raw Dacapo perf .out files into CSVs, stripping C2 JIT compiler samples.")
     parser.add_argument("--raw_dir", default="../../../raw_data/x86_desktop_heterogeneous", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/x86_desktop_heterogeneous", help="Directory to save CSVs")
+    parser.add_argument("--out_dir", default="../../../processed_data/x86_desktop_heterogeneous_no_c2", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=40, help="Number of parallel workers")
     parser.add_argument("--arch", choices=["x86", "arm"], default="x86", help="Target architecture (default: x86)")
     args = parser.parse_args()

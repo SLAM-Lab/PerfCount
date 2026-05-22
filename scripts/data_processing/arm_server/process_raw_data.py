@@ -320,6 +320,7 @@ def align_csvs(out_dir):
         aligned_df = aligned_df[cols]
 
         aligned_df = aligned_df.fillna(0).astype('int64')
+        aligned_df = aligned_df[aligned_df["instructions"] > 0]
 
         # Drop the cpu identifier in the final merged file so ML script finds it correctly
         aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_phase{phase}.csv")

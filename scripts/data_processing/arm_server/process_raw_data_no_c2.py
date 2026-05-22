@@ -30,77 +30,59 @@ def clean_event_name(raw_event):
 
     name = name.lower()
 
-    # Exact dictionary mapping for ARM Desktop PMU counters
+    # Exact dictionary mapping for ARM server PMU counters
     mapping = {
         'cpu-cycles': 'cpu_cycles',
         'cycles': 'cpu_cycles',
         'instructions': 'instructions',
         
-        # Run 0 & 11
-        'branch-instructions': 'branches',
+        'stalled-backend-cycles': 'stalled_backend',
+        'stall_backend': 'stalled_backend',
+        
+        'stalled-frontend-cycles': 'stalled_frontend',
+        'stall_frontend': 'stalled_frontend',
+        
+        'br_pred': 'branches',
         'branches': 'branches',
+        
+        'br_mis_pred': 'branch_misses',
         'branch-misses': 'branch_misses',
-        'branch-loads': 'branch_loads',
-        'branch-load-misses': 'branch_load_misses',
         
-        # Run 1, 2, 7, 8, 10
-        'l1-dcache-loads': 'l1_dcache_loads',
-        'l1-dcache-load-misses': 'l1_dcache_load_misses',
-        'l1-icache-loads': 'l1_icache_loads',
-        'l1-icache-load-misses': 'l1_icache_load_misses',
-        'cache-misses': 'cache_misses',
-        'cache-references': 'cache_references',
-        'l1d_cache': 'l1d_cache',
-        'l1i_cache': 'l1i_cache',
-        
-        # Run 2, 3, 6, 8, 9
-        'dtlb-loads': 'dtlb_loads',
-        'dtlb-load-misses': 'dtlb_load_misses',
-        'itlb-loads': 'itlb_loads',
-        'itlb-load-misses': 'itlb_load_misses',
-        'dtlb_walk': 'dtlb_walk',
-        'itlb_walk': 'itlb_walk',
-        
-        # Run 3, 12
-        'context-switches': 'context_switches',
-        'cs': 'context_switches',
-        
-        # Run 4, 5, 17
-        'page-faults': 'page_faults',
-        'alignment-faults': 'alignment_faults',
-        'emulation-faults': 'emulation_faults',
-        'minor-faults': 'minor_faults',
-        'major-faults': 'major_faults',
-        'faults': 'faults',
-        'cpu-migrations': 'cpu_migrations',
-        'migrations': 'cpu_migrations',
-        'memory_error': 'memory_error',
-        
-        # Run 10, 12
-        'system_time': 'system_time',
-        'task-clock': 'task_clock',
-        'cpu-clock': 'cpu_clock',
-        
-        # Run 13, 14, 15
-        'bx_stall': 'bx_stall',
-        'fx_stall': 'fx_stall',
-        'ixa_stall': 'ixa_stall',
-        'ixb_stall': 'ixb_stall',
-        'lx_stall': 'lx_stall',
-        'decode_stall': 'decode_stall',
-        'dispatch_stall': 'dispatch_stall',
-        'sx_stall': 'sx_stall',
-        
-        # Run 16
+        'bus_access': 'bus_access',
         'mem_access': 'mem_access',
-        'mem_access_rd': 'mem_access_rd',
-        'mem_access_wr': 'mem_access_wr'
+        
+        'l1d_cache': 'l1d_cache',
+        'l1d_cache_refill': 'l1d_cache_refill',
+        'l1d_cache_wb': 'l1d_cache_wb',
+        
+        'l1-dcache-loads': 'l1-dcache-loads',
+        'l1-dcache-load-misses': 'l1-dcache-load-misses',
+        
+        'l1i_cache': 'l1i_cache',
+        'l1i_cache_refill': 'l1i_cache_refill',
+        
+        'l1-icache-loads': 'l1_icache_loads',
+        
+        'llc-loads': 'llc_loads',
+        'll_cache_rd': 'llc_loads',
+        
+        'llc-load-misses': 'llc_misses',
+        'll_cache_miss_rd': 'llc_misses',
+        
+        'dtlb-loads': 'dtlb_loads',
+        'l1d_tlb': 'dtlb_loads',
+        
+        'itlb-loads': 'itlb-loads',
+        'l1i_tlb': 'itlb-loads',
+        
+        'itlb-load-misses': 'itlb-load-misses',
+        'l1i_tlb_refill': 'itlb-load-misses'
     }
 
     if name in mapping:
         return mapping[name]
 
-    # Fallback for any other events
+    # Fallback for any other events (replaces dashes with underscores)
     return name.replace('-', '_').replace('.', '_')
 
 def merge_split_blocks(df, target_instructions=10000000):
@@ -209,6 +191,10 @@ def parse_perf_script_output(proc_stdout, arch="arm"):
         if len(parts) < 3:
             continue
 
+        # Skip C2 JIT compiler thread samples
+        if parts[0] == 'C2':
+            continue
+
         ts_idx = -1
         for i, p in enumerate(parts):
             if p.endswith(':'):
@@ -249,8 +235,6 @@ def parse_perf_script_output(proc_stdout, arch="arm"):
     df = pd.DataFrame(data)
     
     if not df.empty:
-        df = df.fillna(0)
-        
         if 'ts' in df.columns:
             df.drop(columns=['ts'], inplace=True)
             
@@ -300,7 +284,7 @@ def align_csvs(out_dir):
         print("No CSVs found to align.")
         return
 
-    # UPDATED: Group by CPU ID as well so ML scripts can parse it later
+    # For ARM, we group only by bench, freq, and phase to match the ML script expectations
     groups = {}
     for f in csv_files:
         fname = os.path.basename(f)
@@ -308,16 +292,15 @@ def align_csvs(out_dir):
         if match:
             bench = match.group('bench')
             freq = match.group('freq')
-            cpu = match.group('cpu')
             phase = match.group('phase')
             run = int(match.group('run')) 
             
-            key = (bench, freq, cpu, phase)
+            key = (bench, freq, phase)
             if key not in groups:
                 groups[key] = []
             groups[key].append((run, f))
 
-    for (bench, freq, cpu, phase), files_info in groups.items():
+    for (bench, freq, phase), files_info in groups.items():
         files_info.sort(key=lambda x: x[0])
         
         aligned_df = None
@@ -335,7 +318,7 @@ def align_csvs(out_dir):
             if aligned_df is None:
                 aligned_df = df
             else:
-                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
+                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='left')
         
         cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
         aligned_df = aligned_df[cols]
@@ -343,25 +326,24 @@ def align_csvs(out_dir):
         aligned_df = aligned_df.fillna(0).astype('int64')
         aligned_df = aligned_df[aligned_df["instructions"] > 0]
 
-        # UPDATED: Retains the CPU marker in the filename
-        aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_cpu{cpu}_phase{phase}.csv")
+        # Drop the cpu identifier in the final merged file so ML script finds it correctly
+        aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_phase{phase}.csv")
         aligned_df.to_csv(aligned_out, index=False)
         print(f"Created perfectly aligned trace: {aligned_out}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Process raw perf .out files into CSVs in parallel and align traces.")
-    
-    # Defaults updated to point to the desktop folders
-    parser.add_argument("--raw_dir", default="../../../raw_data/arm_desktop", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/arm_desktop", help="Directory to save CSVs")
+    parser = argparse.ArgumentParser(description="Process raw Dacapo perf .out files into CSVs, stripping C2 JIT compiler samples.")
+
+    parser.add_argument("--raw_dir", default="../../../raw_data/arm_server", help="Directory with raw .out files")
+    parser.add_argument("--out_dir", default="../../../processed_data/arm_server_no_c2", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="Number of parallel workers")
     parser.add_argument("--arch", choices=["x86", "arm"], default="arm", help="Target architecture (default: arm)")
     args = parser.parse_args()
     
     os.makedirs(args.out_dir, exist_ok=True)
     
-    files = glob.glob(os.path.join(args.raw_dir, "*.out"))
-    print(f"Found {len(files)} raw files in {args.raw_dir}")
+    files = glob.glob(os.path.join(args.raw_dir, "*dacapo*.out"))
+    print(f"Found {len(files)} Dacapo raw files in {args.raw_dir}")
     print(f"Processing to {args.out_dir} using {args.jobs} workers (Arch: {args.arch})...")
     
     count = 0
@@ -377,7 +359,6 @@ def main():
                 count += 1
             else:
                 skipped += 1
-                print(f"SKIPPED: {msg}")
                 
             for out_msg in outlier_messages:
                 print(out_msg)

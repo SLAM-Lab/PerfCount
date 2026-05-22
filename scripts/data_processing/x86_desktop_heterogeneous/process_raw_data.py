@@ -307,6 +307,7 @@ def align_csvs(out_dir):
 
         # Fill any NaNs from the outer merge with 0 and force cast to integers
         aligned_df = aligned_df.fillna(0).astype('int64')
+        aligned_df = aligned_df[aligned_df["instructions"] > 0]
 
         # Save the perfectly aligned, separated by CPU core file
         aligned_out = os.path.join(out_dir, f"aligned_{bench}_{freq}GHz_cpu{cpu}_phase{phase}.csv")

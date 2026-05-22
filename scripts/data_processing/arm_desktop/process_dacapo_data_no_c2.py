@@ -14,42 +14,94 @@ def parse_filename(filename):
     return None
 
 def clean_event_name(raw_event):
-    name = raw_event.rstrip(':').split(':')[0]
-    if '/' in name:
+    name = raw_event.rstrip(':')
+    name = name.split(':')[0]
+    
+    # Handle ARM specific PMU prefixes like armv8_pmuv3_0/br_pred/
+    if 'armv8_pmuv3' in name and '/' in name:
         parts = name.split('/')
-        name = parts[1] if len(parts) >= 2 and parts[1] else parts[0]
+        if len(parts) >= 2:
+            name = parts[1]
+    elif '/' in name:
+        parts = name.split('/')
+        if len(parts) >= 2 and parts[1]:
+            name = parts[1] 
+        else:
+            name = parts[0]
 
     name = name.lower()
 
+    # Exact dictionary mapping for ARM Desktop PMU counters
     mapping = {
-        'instructions': 'instructions',
         'cpu-cycles': 'cpu_cycles',
-        'bus-cycles': 'bus_cycles',
-        'fp_arith_inst_retired.scalar_single': 'fp_arith_scalar_single',
+        'cycles': 'cpu_cycles',
+        'instructions': 'instructions',
+        
+        # Run 0 & 11
+        'branch-instructions': 'branches',
+        'branches': 'branches',
+        'branch-misses': 'branch_misses',
         'branch-loads': 'branch_loads',
         'branch-load-misses': 'branch_load_misses',
-        'br_inst_retired.all_branches': 'branches',
-        'br_misp_retired.all_branches': 'branch_misses',
-        'ref-cycles': 'ref_cycles',
+        
+        # Run 1, 2, 7, 8, 10
         'l1-dcache-loads': 'l1_dcache_loads',
         'l1-dcache-load-misses': 'l1_dcache_load_misses',
-        'l1-dcache-stores': 'l1_dcache_stores',
+        'l1-icache-loads': 'l1_icache_loads',
         'l1-icache-load-misses': 'l1_icache_load_misses',
-        'llc-loads': 'llc_loads',
-        'llc-load-misses': 'llc_misses',
-        'cache-references': 'cache_references',
         'cache-misses': 'cache_misses',
-        'mem-loads': 'mem_loads',
+        'cache-references': 'cache_references',
+        'l1d_cache': 'l1d_cache',
+        'l1i_cache': 'l1i_cache',
+        
+        # Run 2, 3, 6, 8, 9
         'dtlb-loads': 'dtlb_loads',
         'dtlb-load-misses': 'dtlb_load_misses',
+        'itlb-loads': 'itlb_loads',
         'itlb-load-misses': 'itlb_load_misses',
-        'dtlb-stores': 'dtlb_stores',
-        'dtlb-store-misses': 'dtlb_store_misses',
-        'mem-stores': 'mem_stores'
+        'dtlb_walk': 'dtlb_walk',
+        'itlb_walk': 'itlb_walk',
+        
+        # Run 3, 12
+        'context-switches': 'context_switches',
+        'cs': 'context_switches',
+        
+        # Run 4, 5, 17
+        'page-faults': 'page_faults',
+        'alignment-faults': 'alignment_faults',
+        'emulation-faults': 'emulation_faults',
+        'minor-faults': 'minor_faults',
+        'major-faults': 'major_faults',
+        'faults': 'faults',
+        'cpu-migrations': 'cpu_migrations',
+        'migrations': 'cpu_migrations',
+        'memory_error': 'memory_error',
+        
+        # Run 10, 12
+        'system_time': 'system_time',
+        'task-clock': 'task_clock',
+        'cpu-clock': 'cpu_clock',
+        
+        # Run 13, 14, 15
+        'bx_stall': 'bx_stall',
+        'fx_stall': 'fx_stall',
+        'ixa_stall': 'ixa_stall',
+        'ixb_stall': 'ixb_stall',
+        'lx_stall': 'lx_stall',
+        'decode_stall': 'decode_stall',
+        'dispatch_stall': 'dispatch_stall',
+        'sx_stall': 'sx_stall',
+        
+        # Run 16
+        'mem_access': 'mem_access',
+        'mem_access_rd': 'mem_access_rd',
+        'mem_access_wr': 'mem_access_wr'
     }
 
     if name in mapping:
         return mapping[name]
+
+    # Fallback for any other events
     return name.replace('-', '_').replace('.', '_')
 
 def merge_split_blocks(df, target_instructions=10000000):
@@ -108,7 +160,38 @@ def repair_dropped_samples(df, target=10000000):
         repaired_df['sample_index'] = range(len(repaired_df))
     return repaired_df
 
-def parse_perf_script_output(proc_stdout, arch="x86"):
+def check_block_variance(df, fname, target=10000000):
+    messages = []
+    if df.empty or 'instructions' not in df.columns:
+        return messages
+    
+    instrs = df['instructions']
+    
+    if len(instrs) > 1 and instrs.iloc[-1] < (target * 0.90):
+        instrs_to_check = instrs.iloc[:-1]
+    else:
+        instrs_to_check = instrs
+
+    mean_val = instrs_to_check.mean()
+    std_val = instrs_to_check.std()
+    min_val = instrs_to_check.min()
+    max_val = instrs_to_check.max()
+    
+    lower_bound = target * 0.95
+    upper_bound = target * 1.05
+    
+    outliers = instrs_to_check[(instrs_to_check < lower_bound) | (instrs_to_check > upper_bound)]
+    
+    if not outliers.empty:
+        messages.append(f"  [CHECK] {fname} variance:")
+        messages.append(f"      Mean: {mean_val:,.0f} | Std: {std_val:,.0f} | Min: {min_val:,.0f} | Max: {max_val:,.0f}")
+        messages.append(f"      [!] Found {len(outliers)} significant outliers (> 5% deviation from {target:,}):")
+        for idx, val in outliers.items():
+            messages.append(f"          Row {idx}: {val:,.0f} instructions")
+            
+    return messages
+
+def parse_perf_script_output(proc_stdout, arch="arm"):
     data = []
     current_interval = {}
     
@@ -119,6 +202,10 @@ def parse_perf_script_output(proc_stdout, arch="x86"):
         
         parts = line.split()
         if len(parts) < 3:
+            continue
+
+        # Skip C2 JIT compiler thread samples
+        if parts[0] == 'C2':
             continue
 
         ts_idx = -1
@@ -177,7 +264,7 @@ def process_single_file_wrapper(args):
     meta = parse_filename(fname)
     
     if not meta:
-        return False, f"Skipped {fname} (doesn't match Dacapo naming convention)"
+        return False, f"Skipped {fname} (doesn't match Dacapo naming convention)", []
         
     try:
         cmd = ["perf", "script", "-i", f]
@@ -185,16 +272,18 @@ def process_single_file_wrapper(args):
             df = parse_perf_script_output(proc.stdout, arch=arch)
             
         if df.empty:
-            return False, f"[WARN] {fname}: No data extracted."
+            return False, f"[WARN] {fname}: No data extracted.", []
+
+        outlier_messages = check_block_variance(df, fname, target=10000000)
 
         out_name = f"{meta['bench']}_{meta['freq']}GHz_cpu{meta['cpu_id']}_run{meta['run']}_phase{meta['phase']}.csv"
         out_path = os.path.join(out_dir, out_name)
         
         df.to_csv(out_path, index=False)
-        return True, f"Processed {fname}"
+        return True, f"Processed {fname}", outlier_messages
         
     except Exception as e:
-        return False, f"[ERR] Failed {fname}: {e}"
+        return False, f"[ERR] Failed {fname}: {e}", []
 
 def align_csvs_and_evaluate(out_dir):
     print("\n--- Starting Dacapo Alignment & Evaluation Phase ---")
@@ -238,7 +327,7 @@ def align_csvs_and_evaluate(out_dir):
             if aligned_df is None:
                 aligned_df = df
             else:
-                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
+                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='inner')
 
         if len(instructions_across_runs) > 1:
             inst_df = pd.DataFrame(instructions_across_runs).dropna()
@@ -278,32 +367,40 @@ def align_csvs_and_evaluate(out_dir):
         print("=======================================================")
 
 def main():
-    parser = argparse.ArgumentParser(description="Process raw Dacapo perf .out files into CSVs and evaluate alignment.")
-    parser.add_argument("--raw_dir", default="../../../raw_data/x86_desktop_heterogeneous", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/x86_desktop_heterogeneous", help="Directory to save CSVs")
+    parser = argparse.ArgumentParser(description="Process raw ARM Dacapo perf .out files into CSVs, stripping C2 JIT compiler samples.")
+    parser.add_argument("--raw_dir", default="../../../raw_data/arm_desktop", help="Directory with raw .out files")
+    parser.add_argument("--out_dir", default="../../../processed_data/arm_desktop_no_c2", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=40, help="Number of parallel workers")
-    parser.add_argument("--arch", choices=["x86", "arm"], default="x86", help="Target architecture (default: x86)")
+    parser.add_argument("--arch", choices=["x86", "arm"], default="arm", help="Target architecture (default: arm)")
     args = parser.parse_args()
     
     os.makedirs(args.out_dir, exist_ok=True)
     
     files = glob.glob(os.path.join(args.raw_dir, "*dacapo*.out"))
     print(f"Found {len(files)} Dacapo raw files in {args.raw_dir}")
-    print(f"Processing to {args.out_dir} using {args.jobs} workers...")
+    print(f"Processing to {args.out_dir} using {args.jobs} workers (Arch: {args.arch})...")
     
     # Bundle tasks for the memory-safe multiprocessing map
     tasks = [(f, args.out_dir, args.arch) for f in files]
     count = 0
+    skipped = 0
     
     # MAGIC FIX: maxtasksperchild=1 strictly forces process garbage collection
     with mp.Pool(processes=args.jobs, maxtasksperchild=1) as pool:
-        for success, msg in pool.imap_unordered(process_single_file_wrapper, tasks):
+        for success, msg, outlier_messages in pool.imap_unordered(process_single_file_wrapper, tasks):
             if success:
                 count += 1
-            if count > 0 and count % 50 == 0:
+            else:
+                skipped += 1
+                print(f"SKIPPED: {msg}")
+                
+            for out_msg in outlier_messages:
+                print(out_msg)
+
+            if count > 0 and count % 20 == 0:
                 print(f"  Processed {count} files...")
             
-    print(f"\nDone. Processed {count} files.")
+    print(f"\nDone. Processed {count} files. Skipped {skipped}.")
     
     align_csvs_and_evaluate(args.out_dir)
 

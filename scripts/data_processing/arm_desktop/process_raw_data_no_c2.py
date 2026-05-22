@@ -209,6 +209,10 @@ def parse_perf_script_output(proc_stdout, arch="arm"):
         if len(parts) < 3:
             continue
 
+        # Skip C2 JIT compiler thread samples
+        if parts[0] == 'C2':
+            continue
+
         ts_idx = -1
         for i, p in enumerate(parts):
             if p.endswith(':'):
@@ -335,12 +339,10 @@ def align_csvs(out_dir):
             if aligned_df is None:
                 aligned_df = df
             else:
-                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='outer')
-        
-        cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
-        aligned_df = aligned_df[cols]
+                aligned_df = pd.merge(aligned_df, df, on='sample_index', how='inner')
 
-        aligned_df = aligned_df.fillna(0).astype('int64')
+        cols = ['sample_index'] + sorted([c for c in aligned_df.columns if c != 'sample_index'])
+        aligned_df = aligned_df[cols].fillna(0).astype('int64')
         aligned_df = aligned_df[aligned_df["instructions"] > 0]
 
         # UPDATED: Retains the CPU marker in the filename
@@ -349,18 +351,18 @@ def align_csvs(out_dir):
         print(f"Created perfectly aligned trace: {aligned_out}")
 
 def main():
-    parser = argparse.ArgumentParser(description="Process raw perf .out files into CSVs in parallel and align traces.")
-    
+    parser = argparse.ArgumentParser(description="Process raw Dacapo perf .out files into CSVs, stripping C2 JIT compiler samples.")
+
     # Defaults updated to point to the desktop folders
     parser.add_argument("--raw_dir", default="../../../raw_data/arm_desktop", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/arm_desktop", help="Directory to save CSVs")
+    parser.add_argument("--out_dir", default="../../../processed_data/arm_desktop_no_c2", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="Number of parallel workers")
     parser.add_argument("--arch", choices=["x86", "arm"], default="arm", help="Target architecture (default: arm)")
     args = parser.parse_args()
     
     os.makedirs(args.out_dir, exist_ok=True)
     
-    files = glob.glob(os.path.join(args.raw_dir, "*.out"))
+    files = glob.glob(os.path.join(args.raw_dir, "*dacapo*.out"))
     print(f"Found {len(files)} raw files in {args.raw_dir}")
     print(f"Processing to {args.out_dir} using {args.jobs} workers (Arch: {args.arch})...")
     
