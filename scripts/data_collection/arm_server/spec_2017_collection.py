@@ -2,10 +2,9 @@
 
 import os
 import stat
-import time
 
 if __name__ == "__main__":
-    output_file = "spec_collection.sh"
+    output_file = "spec_2017_collection.sh"
 
     # SPEC 2017 benchmarks
     spec_benchmarks = [
@@ -13,12 +12,6 @@ if __name__ == "__main__":
          503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
     ]
     
-    # DaCapo benchmarks
-    dacapo_benchmarks = [
-        'avrora', 'batik', 'biojava', 'cassandra', 'eclipse', 'fop', 'graphchi', 'h2', 'h2o', 'jme',
-        'jython', 'kafka', 'luindex', 'lusearch', 'pmd', 'spring', 'sunflow', 'tomcat', 'tradebeans', 'tradesoap', 'xalan', 'zxing'
-    ]
-
     frequencies = ["3.0"]
     cpus = [0]
     spec_dir = "../../../benchmarks/spec"
@@ -27,14 +20,15 @@ if __name__ == "__main__":
         count = 0
 
         # --- SPEC 2017 Collection ---
-        for run_number in range(0, 9):  
+        for run_number in range(0, 19):
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
-                        command += "runcpu --config=arm_server " 
-                        command += "--define my_cpu=" + str(cpu) + " " 
+                        command += "runcpu --config=arm_server_2017 "
+                        command += "--tune=base "
+                        command += "--define my_cpu=" + str(cpu) + " "
                         command += "--define my_freq=" + str(freq) + "GHz " 
                         command += "--define my_run=" + str(run_number) + " " 
                         command += str(benchmark) + "'" 

@@ -23,22 +23,30 @@ if __name__ == "__main__":
     cpus = [0]
     dacapo_dir = "../../../benchmarks/dacapo"
 
-    # Strict Flags (Maximum Determinism ported from x86)
+    # Strict Flags
     strict_flags = (
-        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
+        "-Xcomp -Xbatch -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 "
+        "-Xverify:none "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData -XX:-UseTLAB "
-        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
+        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0 "
+        "-XX:-UseOnStackReplacement -XX:-ProfileInterpreter -XX:-UseCounterDecay "
+        "-XX:+DisableAttachMechanism -XX:-ClassUnloading "
+        "-XX:-UseNUMA -XX:-UseCodeCacheFlushing"
     )
 
-    # Relaxed Flags (Removed UseTLAB to prevent framework crashes)
+    # Relaxed Flags (no UseTLAB to prevent framework crashes)
     relaxed_flags = (
-        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
+        "-Xcomp -Xbatch -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 "
+        "-Xverify:none "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData "
-        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
+        "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0 "
+        "-XX:-UseOnStackReplacement -XX:-ProfileInterpreter -XX:-UseCounterDecay "
+        "-XX:+DisableAttachMechanism -XX:-ClassUnloading "
+        "-XX:-UseNUMA -XX:-UseCodeCacheFlushing"
     )
 
     # 18 Hardware Counter Groups for ARM Desktop (User-Space Only)
