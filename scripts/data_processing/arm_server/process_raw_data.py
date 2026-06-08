@@ -7,6 +7,8 @@ import argparse
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 def parse_filename(filename):
+    # Handles SPEC 2017 (500-series), SPEC 2026 (700/800-series), and DaCapo:
+    # all share cpu_{id}_{freq}GHz_{bench}_10000000_{run}_{phase}.out
     match = re.search(r"cpu_(?P<cpu_id>\d+)_(?P<freq>[\d\.]+)GHz_(?P<bench>.+)_10000000_(?P<run>\d+)_(?P<phase>\d+)\.out", filename)
     if match:
         return match.groupdict()
@@ -331,7 +333,7 @@ def main():
     parser = argparse.ArgumentParser(description="Process raw perf .out files into CSVs in parallel and align traces.")
     
     parser.add_argument("--raw_dir", default="../../../raw_data/arm_server", help="Directory with raw .out files")
-    parser.add_argument("--out_dir", default="../../../processed_data/arm_server", help="Directory to save CSVs")
+    parser.add_argument("--out_dir", default="../../../processed_data_10M/arm_server", help="Directory to save CSVs")
     parser.add_argument("--jobs", type=int, default=os.cpu_count(), help="Number of parallel workers")
     parser.add_argument("--arch", choices=["x86", "arm"], default="arm", help="Target architecture (default: arm)")
     args = parser.parse_args()
