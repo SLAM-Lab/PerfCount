@@ -4,37 +4,41 @@ import os
 import stat
 
 if __name__ == "__main__":
-    output_file = "spec_collection.sh"
+    output_file = "spec_2026_collection.sh"
 
-    # SPEC 2017 benchmarks
-    spec_benchmarks = [
-         500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
-         503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
-    ]
-    
+    # SPEC 2026 rate benchmarks
+    intrate_benchmarks  = [706, 707, 708, 710, 714, 721, 723, 727, 729, 734, 735, 750, 753, 777]
+    fprate_benchmarks   = [709, 722, 731, 736, 737, 748, 749, 765, 766, 767, 772, 782]
+
+    # SPEC 2026 speed benchmarks
+    intspeed_benchmarks = [801, 807, 817, 821, 823, 827, 829, 834, 835, 838, 846, 853, 854]
+    fpspeed_benchmarks  = [800, 803, 809, 811, 816, 820, 822, 849, 857, 865, 867, 872, 881]
+
+    spec_benchmarks = intrate_benchmarks + fprate_benchmarks #+ intspeed_benchmarks + fpspeed_benchmarks
+
     frequencies = ["3.0"]
     cpus = [0]
-    spec_dir = "../../../benchmarks/spec"
+    spec_dir = "../../../benchmarks/spec_2026"
 
     with open(output_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         count = 0
 
-        # --- SPEC 2017 Collection (18 Groups) ---
-        for run_number in range(0, 18):  
+        # --- SPEC 2026 Collection ---
+        for run_number in range(0, 19):
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
-                        command += "runcpu --config=arm_desktop "
+                        command += "runcpu --config=arm_desktop_2026 "
+                        command += "--tune=base "
                         command += "--define my_cpu=" + str(cpu) + " "
                         command += "--define my_freq=" + str(freq) + "GHz "
                         command += "--define my_run=" + str(run_number) + " "
                         command += str(benchmark) + "'"
                         f.write(command + "\n")
                         count += 1
-
 
         # Add email notification at the end of the script
         f.write("\n")
@@ -48,17 +52,22 @@ if __name__ == "__main__":
         f.write("\n")
         f.write("Hostname: $HOSTNAME\n")
         f.write("End Time: $END_TIME\n")
-        f.write("Script: arm_edge_heterogeneous/collection.sh\n")
+        f.write("Script: arm_desktop/spec_2026_collection.sh\n")
         f.write("Working Directory: $(pwd)\n")
         f.write("\n")
-        f.write("All SPEC benchmarks have been processed.\n")
+        f.write("All SPEC 2026 benchmarks have been processed (intrate, fprate, intspeed, fpspeed).\n")
         f.write("\"\n")
         f.write("\n")
         f.write("echo \"$EMAIL_BODY\" | mail -s \"$EMAIL_SUBJECT\" -r \"$EMAIL_SENDER\" \"$EMAIL_RECIPIENT\"\n")
         f.write("\n")
         f.write("echo \"Data collection completed at $END_TIME\"\n")
 
+    # Make the generated script executable
     st = os.stat(output_file)
     os.chmod(output_file, st.st_mode | stat.S_IEXEC)
-    
-    print(f"Generated {output_file} with {count} SPEC commands (18 runs per benchmark).")
+
+    n_rate  = len(intrate_benchmarks)  + len(fprate_benchmarks)
+    n_speed = len(intspeed_benchmarks) + len(fpspeed_benchmarks)
+    print(f"Generated {output_file} with {count} SPEC 2026 commands "
+          f"({n_rate} rate + {n_speed} speed benchmarks × {len(frequencies)} freq × "
+          f"{len(cpus)} cpu × 19 runs).")

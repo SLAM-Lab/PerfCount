@@ -19,14 +19,14 @@ if __name__ == "__main__":
 
     dacapo_benchmarks = strict_benchmarks + relaxed_benchmarks
 
-    frequencies = ["1.0"] 
+    frequencies = ["2.0"] 
     cpus = [0]
     dacapo_dir = "../../../benchmarks/dacapo"
 
     # Strict Flags (Maximum Determinism ported from x86)
     strict_flags = (
         "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData -XX:-UseTLAB "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     # Relaxed Flags (Removed UseTLAB to prevent framework crashes)
     relaxed_flags = (
         "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseEpsilonGC -XX:+AlwaysPreTouch "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
