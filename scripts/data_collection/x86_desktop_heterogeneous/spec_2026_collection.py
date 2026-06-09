@@ -18,21 +18,39 @@ if __name__ == "__main__":
 
     email_recipient = "mebarondeau@utexas.edu"
 
-    frequencies = ["3.0"]
-    cpus = [0]
+    frequencies = ["4.0"]
+    p_cpus = [0]   # P-core
+    e_cpus = [16]  # E-core
     spec_dir = "../../../benchmarks/spec_2026"
 
     with open(output_file, "w") as f:
+        f.write("#!/bin/bash\n\n")
         count = 0
 
-        # --- SPEC 2026 Collection ---
-        for run_number in range(0, 19):
+        # --- SPEC 2026 P-Core Collection (17 counter groups, runs 0-16) ---
+        for run_number in range(0, 17):
             for freq in frequencies:
-                for cpu in cpus:
+                for cpu in p_cpus:
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
-                        command += "runcpu --config=arm_server_2026 "
+                        command += "runcpu --config=x86_desktop_pcore_2026 "
+                        command += "--tune=base "
+                        command += "--define my_cpu=" + str(cpu) + " "
+                        command += "--define my_freq=" + str(freq) + "GHz "
+                        command += "--define my_run=" + str(run_number) + " "
+                        command += str(benchmark) + "'"
+                        f.write(command + "\n")
+                        count += 1
+
+        # --- SPEC 2026 E-Core Collection (12 counter groups, run 10 removed: topdown unsupported on Atom) ---
+        for run_number in [r for r in range(13) if r != 10]:
+            for freq in frequencies:
+                for cpu in e_cpus:
+                    for benchmark in spec_benchmarks:
+                        command = "taskset --cpu-list " + str(cpu)
+                        command += " bash -c 'cd " + spec_dir + " && source shrc && "
+                        command += "runcpu --config=x86_desktop_ecore_2026 "
                         command += "--tune=base "
                         command += "--define my_cpu=" + str(cpu) + " "
                         command += "--define my_freq=" + str(freq) + "GHz "
@@ -53,7 +71,7 @@ if __name__ == "__main__":
         f.write("\n")
         f.write("Hostname: $HOSTNAME\n")
         f.write("End Time: $END_TIME\n")
-        f.write("Script: arm_server/spec_2026_collection.sh\n")
+        f.write("Script: x86_desktop_heterogeneous/spec_2026_collection.sh\n")
         f.write("Working Directory: $(pwd)\n")
         f.write("\n")
         f.write("All SPEC 2026 benchmarks have been processed (intrate, fprate, intspeed, fpspeed).\n")
@@ -63,12 +81,9 @@ if __name__ == "__main__":
         f.write("\n")
         f.write("echo \"Data collection completed at $END_TIME\"\n")
 
-    # Make the generated script executable
     st = os.stat(output_file)
     os.chmod(output_file, st.st_mode | stat.S_IEXEC)
 
     n_rate  = len(intrate_benchmarks)  + len(fprate_benchmarks)
     n_speed = len(intspeed_benchmarks) + len(fpspeed_benchmarks)
-    print(f"Generated {output_file} with {count} SPEC 2026 commands "
-          f"({n_rate} rate + {n_speed} speed benchmarks × {len(frequencies)} freq × "
-          f"{len(cpus)} cpu × 19 runs).")
+

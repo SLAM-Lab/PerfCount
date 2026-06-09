@@ -12,6 +12,8 @@ if __name__ == "__main__":
          503, 507, 508, 510, 511, 519, 521, 526, 527, 538, 544, 549, 554
     ]
     
+    email_recipient = "mebarondeau@utexas.edu"
+
     frequencies = ["3.0"]
     cpus = [0]
     spec_dir = "../../../benchmarks/spec"
@@ -40,8 +42,8 @@ if __name__ == "__main__":
         f.write("# Send email notification upon completion\n")
         f.write("END_TIME=$(date)\n")
         f.write("HOSTNAME=$(hostname)\n")
-        f.write("EMAIL_SENDER=\"mebarondeau@utexas.edu\"\n")
-        f.write("EMAIL_RECIPIENT=\"mebarondeau@utexas.edu\"\n")
+        f.write(f"EMAIL_SENDER=\"{email_recipient}\"\n")
+        f.write(f"EMAIL_RECIPIENT=\"{email_recipient}\"\n")
         f.write("EMAIL_SUBJECT=\"PerfCount Data Collection Completed on $HOSTNAME\"\n")
         f.write("EMAIL_BODY=\"The data collection workloads have completed successfully.\n")
         f.write("\n")
