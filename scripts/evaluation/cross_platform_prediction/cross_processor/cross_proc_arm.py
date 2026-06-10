@@ -113,6 +113,7 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         m_scale = compute_metrics(y_true_cycles, src_cycles * freq_ratio)
 
         os.makedirs(out_dir, exist_ok=True)
+        model.save_model(os.path.join(out_dir, f"model_{test_bench}.cbm"))
         pd.DataFrame({
             "source_val":       src_cycles,
             "target_actual":    y_true_cycles,

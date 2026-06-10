@@ -136,17 +136,20 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 
         m_ml    = compute_metrics(y_true_cycles, pred_cycles)
         m_copy  = compute_metrics(y_true_cycles, src_cycles)
-        m_scale = compute_metrics(y_true_cycles, src_cycles * freq_ratio)
+        # ref_cycles ~ wall time at fixed ref freq; assuming constant cpu_cycles
+        # work, wall time scales with src_freq/tgt_freq (inverse of freq_ratio).
+        m_scale = compute_metrics(y_true_cycles, src_cycles / freq_ratio)
 
-        # Per-fold prediction CSV
         os.makedirs(out_dir, exist_ok=True)
-        pd.DataFrame({
-            "source_val":       src_cycles,
-            "target_actual":    y_true_cycles,
-            "target_predicted": pred_cycles,
-            "ratio_actual":     test_df["target_y"].values / src_clean_t.values,
-            "ratio_predicted":  pred_ratio,
-        }).to_csv(os.path.join(out_dir, f"predictions_{test_bench}.csv"), index=False)
+        model.save_model(os.path.join(out_dir, f"model_{test_bench}.cbm"))
+        if getattr(args, "save_predictions", False):
+            pd.DataFrame({
+                "source_val":       src_cycles,
+                "target_actual":    y_true_cycles,
+                "target_predicted": pred_cycles,
+                "ratio_actual":     test_df["target_y"].values / src_clean_t.values,
+                "ratio_predicted":  pred_ratio,
+            }).to_csv(os.path.join(out_dir, f"predictions_{test_bench}.csv"), index=False)
 
         return {
             "bench":               test_bench,
@@ -200,8 +203,8 @@ def load_x86_data(data_dir, target_cpu=None):
         try:
             df = pd.read_csv(fpath)
             df.columns = [c.strip() for c in df.columns]
-            if "instructions" in df.columns and "cpu_cycles" in df.columns:
-                df = df[(df["instructions"] > 100_000) & (df["cpu_cycles"] > 0)]
+            if "instructions" in df.columns and "ref_cycles" in df.columns:
+                df = df[(df["instructions"] > 100_000) & (df["ref_cycles"] > 0)]
             if not df.empty:
                 key = (m.group("freq"), f"{m.group('bench')}_phase{m.group('phase')}")
                 data_map[key] = df
@@ -216,11 +219,17 @@ def load_x86_data(data_dir, target_cpu=None):
 # =============================================================================
 
 def _suite_prefix(bench_name):
-    """Return 'dacapo', 'spec', or 'other' for a bench_phase key."""
+    """Return 'dacapo', 'spec2017', 'spec2026', or 'other' for a bench_phase key."""
     if bench_name.startswith("dacapo_"):
         return "dacapo"
     if bench_name.startswith("spec_"):
-        return "spec"
+        rest = bench_name[len("spec_"):]
+        try:
+            if int(rest.split(".")[0]) >= 700:
+                return "spec2026"
+        except ValueError:
+            pass
+        return "spec2017"
     return "other"
 
 
@@ -248,7 +257,7 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
         merged = prepare_bench_df(
             data_map[(src_freq, b)].copy(),
             data_map[(tgt_freq, b)].copy(),
-            target_key="cpu_cycles",
+            target_key="ref_cycles",
         )
         if merged is not None:
             bench_dfs[b] = merged
@@ -298,9 +307,11 @@ def main():
     parser.add_argument("--target_cpu", type=str, default=None,
                         help="Filter to a specific CPU ID (e.g. '0' for P-cores, '16' for E-cores). "
                              "Leave unset to use all CPUs in the directory.")
-    parser.add_argument("--suite", choices=["all", "dacapo", "spec"], default="all",
+    parser.add_argument("--suite", choices=["all", "dacapo", "spec2017", "spec2026"], default="all",
                         help="Benchmark suite to include in LOOCV folds: "
-                             "'all' (default), 'dacapo', or 'spec'.")
+                             "'all' (default), 'dacapo', 'spec2017', or 'spec2026'.")
+    parser.add_argument("--save_predictions", action="store_true", default=False,
+                        help="Save per-fold predictions_{bench}.csv files (disabled by default).")
     add_feature_args(parser)
     args = parser.parse_args()
 
