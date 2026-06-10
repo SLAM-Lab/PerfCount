@@ -23,6 +23,18 @@ def set_preprocess_args(parser):
 	parser.add_argument('--scaler',				default='minmax', choices=['minmax', 'standard', 'none', 'minmax01'])
 	parser.add_argument('--filter',				default='none', choices=['median', 'none'])
 	parser.add_argument('--filter_size',		type=int, default=3)
+	parser.add_argument('--heterogeneous_prob',	type=float, default=0.0,	help='Probability in [0,1] of replacing a '\
+												'training-set sample with the same-position sample from a donor trace '\
+												'collected at a different frequency/processor')
+	parser.add_argument('--heterogeneous_seed',	type=int, default=42,	help='Random seed controlling which training '\
+												'samples are replaced and which donor is used')
+	parser.add_argument('--heterogeneous_mode',	default='cross_freq', choices=['cross_freq', 'cross_proc'], help='Donor '\
+												'pool for heterogeneous history: cross_freq (same core, other frequency) '\
+												'or cross_proc (other core, any frequency)')
+	parser.add_argument('--add_heterogeneity_features', action='store_true', help='Append het_flag and '\
+												'het_source_freq feature columns to every sample (train and test), '\
+												'marking which samples were replaced by heterogeneous-history '\
+												'injection and which frequency their data was sourced from')
 	return parser
 
 def supervised_model_args(parser):
