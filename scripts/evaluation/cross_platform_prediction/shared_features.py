@@ -397,6 +397,23 @@ def compute_metrics(y_true, y_pred, weights=None):
 # 6.  FOLD RESUME HELPER
 # =============================================================================
 
+def try_load_model(out_dir, test_bench):
+    """
+    If model_{test_bench}.cbm already exists in out_dir, load and return it
+    so callers can skip retraining. Returns None if no cached model is found.
+    """
+    model_path = os.path.join(out_dir, f"model_{test_bench}.cbm")
+    if not os.path.exists(model_path):
+        return None
+    try:
+        model = CatBoostRegressor()
+        model.load_model(model_path)
+        print(f"  [SKIP] Loaded cached model for '{test_bench}', skipping training.")
+        return model
+    except Exception:
+        return None
+
+
 def load_fold_if_done(out_dir, test_bench, freq_ratio):
     """
     If predictions_{test_bench}.csv already exists in out_dir, recompute and
