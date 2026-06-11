@@ -53,6 +53,7 @@ from shared_features import (
     prepare_bench_df,
     compute_metrics,
     load_fold_if_done,
+    try_load_model,
     run_loocv,
     print_summary,
     save_feature_importance,
@@ -91,13 +92,14 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         y_test_log  = np.log(np.clip(ratio_test, 0.05, 50.0))
 
         cat_feats = cat_feature_names(args)
-        model     = build_model(cat_feats)
-
-        model.fit(
-            X_train, y_train_log,
-            eval_set=(X_test, y_test_log),
-            early_stopping_rounds=200,
-        )
+        model = try_load_model(out_dir, test_bench)
+        if model is None:
+            model = build_model(cat_feats)
+            model.fit(
+                X_train, y_train_log,
+                eval_set=(X_test, y_test_log),
+                early_stopping_rounds=200,
+            )
 
         importances = dict(zip(X_train.columns.tolist(), model.get_feature_importance()))
 
@@ -288,9 +290,15 @@ def main():
     parser.add_argument("--save_predictions", action="store_true", default=False,
                         help="Save per-fold predictions_{bench}.csv files (disabled by default).")
     add_feature_args(parser)
+    parser.add_argument("--force", action="store_true", default=False,
+                        help="Re-run even if grand_summary.csv already exists in --out_dir.")
     args = parser.parse_args()
 
     os.makedirs(args.out_dir, exist_ok=True)
+    summary_path = os.path.join(args.out_dir, "grand_summary.csv")
+    if os.path.exists(summary_path) and not args.force:
+        print(f"[SKIP] {summary_path} already exists. Use --force to re-run.")
+        return
     print(f"\n{'='*60}")
     print(f"  cross_proc_x86 | data: {os.path.abspath(args.data_dir)}")
     print(f"  cpu{args.src_cpu} -> cpu{args.tgt_cpu}")
