@@ -54,6 +54,13 @@ def add_feature_args(parser):
                    help="Feature names to drop from X after construction "
                         "(e.g. ixb_stall_rate sx_stall_rate).")
 
+    g.add_argument("--input_counters", nargs="+", default=None,
+                   help="Restrict raw hardware counters available for feature "
+                        "construction to this list (plus instructions/cpu_cycles/"
+                        "ref_cycles, always kept). Derived features whose underlying "
+                        "counter is unavailable are silently skipped by build_features. "
+                        "Default: use all available counters.")
+
     g.add_argument("--equal_weight", action="store_true", default=False,
                    help="Weight training samples so every workload contributes equally "
                         "regardless of trace length (1/len per sample). "
@@ -178,6 +185,21 @@ STALL_COUNTERS = [
     "bx_stall", "decode_stall", "dispatch_stall",
     "fx_stall", "ixa_stall", "ixb_stall", "lx_stall", "sx_stall",
 ]
+
+ALWAYS_KEEP_COUNTERS = ["instructions", "cpu_cycles", "ref_cycles"]
+
+
+def restrict_input_counters(df, suffix, input_counters):
+    """Drop raw counter columns (with the given suffix) not in
+    ALWAYS_KEEP_COUNTERS or input_counters, so build_features() silently
+    skips derived features whose underlying counter was removed."""
+    if not input_counters:
+        return df
+    keep = {f"{c}{suffix}" for c in ALWAYS_KEEP_COUNTERS} | \
+           {f"{c}{suffix}" for c in input_counters}
+    drop_cols = [c for c in df.columns if c.endswith(suffix) and c not in keep]
+    return df.drop(columns=drop_cols, errors="ignore")
+
 
 # Rolling window applied to these features (when --rolling_window > 0)
 ROLLING_FEATURE_NAMES = [

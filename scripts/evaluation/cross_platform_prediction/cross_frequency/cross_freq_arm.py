@@ -43,6 +43,7 @@ import pandas as pd
 from shared_features import (
     add_feature_args,
     build_features,
+    restrict_input_counters,
     build_model,
     cat_feature_names,
     prepare_bench_df,
@@ -91,6 +92,9 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
             )
         else:
             sample_weights = None
+
+        train_full = restrict_input_counters(train_full, "_src", getattr(args, "input_counters", None))
+        test_df    = restrict_input_counters(test_df, "_src", getattr(args, "input_counters", None))
 
         X_train = build_features(train_full, suffix="_src", args=args)
         X_test  = build_features(test_df,    suffix="_src", args=args)
