@@ -23,9 +23,15 @@ if __name__ == "__main__":
         count = 0
 
         # --- SPEC P-Core Collection ---
-        for run_number in range(0, 14):
+        for run_number in list(range(0, 14)) + [100]:
             for freq in frequencies:
                 for cpu in p_cpus:
+                    if run_number == 100:
+                        f.write(
+                            "perf stat -I 10 -x, -e power/energy-cores/ -o "
+                            f"../../../idle_{cpu}_{freq}GHz_power.csv "
+                            "sleep 10\n")
+                        count += 1
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
@@ -34,14 +40,20 @@ if __name__ == "__main__":
                         command += "--define my_cpu=" + str(cpu) + " "
                         command += "--define my_freq=" + str(freq) + "GHz "
                         command += "--define my_run=" + str(run_number) + " "
-                        command += str(benchmark) + "'" 
-                        f.write(command + "\n") 
+                        command += str(benchmark) + "'"
+                        f.write(command + "\n")
                         count += 1
 
         # --- SPEC E-Core Collection ---
-        for run_number in range(0, 10):
+        for run_number in list(range(0, 10)) + [100]:
             for freq in frequencies:
                 for cpu in e_cpus:
+                    if run_number == 100:
+                        f.write(
+                            "perf stat -I 10 -x, -e power/energy-cores/ -o "
+                            f"../../../idle_{cpu}_{freq}GHz_power.csv "
+                            "sleep 10\n")
+                        count += 1
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
@@ -50,8 +62,8 @@ if __name__ == "__main__":
                         command += "--define my_cpu=" + str(cpu) + " "
                         command += "--define my_freq=" + str(freq) + "GHz "
                         command += "--define my_run=" + str(run_number) + " "
-                        command += str(benchmark) + "'" 
-                        f.write(command + "\n") 
+                        command += str(benchmark) + "'"
+                        f.write(command + "\n")
                         count += 1
 
         f.write(f"\necho \"SPEC x86 Data collection completed\" | mail -s \"SPEC Complete\" -r \"{email_recipient}\" \"{email_recipient}\"\n")
