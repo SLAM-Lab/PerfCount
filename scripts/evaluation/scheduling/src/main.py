@@ -25,26 +25,41 @@ WARMUP_A_EtoP   = 0.0   # amplitude:  E→P warm-up slowdown
 WARMUP_TAU_EtoP = 1.0   # decay time: E→P (chunks)
 WARMUP_K        = 50    # number of post-migration chunks to penalize
 
-MIG_LAT_S  = 0.000100   # 100us Migration Latency
-MIG_NRG_J  = 0.000015   # 15uJ Migration Energy
-DVFS_LAT_S = 0.000040   # 40us Fallback Frequency Scale Latency
-DVFS_NRG_J = 0.000003   # 3uJ Fallback Frequency Scale Energy
+# P↔E context switch: mean 4.47μs, symmetric within 0.1μs (ctx_switch_bench, 10 reps × 5000 migrations)
+MIG_LAT_S  = 4.47e-6
+# Migration energy: placeholder estimate (4.5μs × ~2W core power @ 3GHz).
+# RAPL-based direct measurement was attempted (continuous-spin sweep,
+# duty-cycled bench, same-core control — see power_collection/ctx_switch/
+# ctx_switch_power_freq_sweep.sh, ctx_switch_power_duty_test.sh,
+# ctx_switch_power_duty_control.sh + analyze_*.py). A single migration's
+# energy budget (~4.47μs × O(1-2W) ≈ O(1-10nJ)) is below RAPL's ~50ms /
+# ~10-50mW resolution; measured "energy per migration" varied by orders of
+# magnitude (and sign) with duty cycle / loop rate, confirming those values
+# are measurement artifacts, not signal. 9e-9 remains the best available
+# order-of-magnitude placeholder.
+MIG_NRG_J  = 9e-9
+DVFS_LAT_S = 5.0e-6    # fallback for freq pairs not in P_LAT_US/E_LAT_US
+DVFS_NRG_J = 2e-5      # fallback
 
 
-# DVFS transition latencies (μs), dvfs_bench_v2, 500 reps each
-# Upward transitions (voltage pre-stabilizes) ~3-7μs; downward ~10-12μs.
-# P-core 3.0→4.0 uses median (3.02μs): one outlier rep inflated mean to 5.13μs.
+# DVFS transition latencies (μs): simple_latency.c + analyze_dvfs.py, 100 reps each.
+# Median across reps (robust to the long right tail seen on some downscale/E-core
+# transitions, where the core occasionally steps through an intermediate P-state).
+# Entries that measured 0.00 (transition completes within a single ~1 sample
+# compute kernel, below the rolling-median detection resolution) are floored to
+# one sample period at the target frequency: P-core 3GHz=2.68us, E-core 4GHz=3.01us,
+# E-core 3GHz=4.02us.
 P_LAT_US = {
-    (1.0, 2.0): 5.58,  (1.0, 3.0): 3.85,  (1.0, 4.0): 3.12,
-    (2.0, 1.0): 11.06, (2.0, 3.0): 3.93,  (2.0, 4.0): 3.16,
-    (3.0, 1.0): 10.5,  (3.0, 2.0): 5.61,  (3.0, 4.0): 3.02,
-    (4.0, 1.0): 10.04, (4.0, 2.0): 5.6,   (4.0, 3.0): 3.96,
+    (1.0, 2.0): 4.02,  (1.0, 3.0): 2.68,  (1.0, 4.0): 2.01,
+    (2.0, 1.0): 7.93,  (2.0, 3.0): 2.68,  (2.0, 4.0): 2.01,
+    (3.0, 1.0): 8.04,  (3.0, 2.0): 2.68,  (3.0, 4.0): 2.01,
+    (4.0, 1.0): 8.04,  (4.0, 2.0): 2.22,  (4.0, 3.0): 2.68,  # floored (median 0.00)
 }
 E_LAT_US = {
-    (1.0, 2.0): 6.67,  (1.0, 3.0): 4.82,  (1.0, 4.0): 4.11,
-    (2.0, 1.0): 12.37, (2.0, 3.0): 4.88,  (2.0, 4.0): 4.17,
-    (3.0, 1.0): 10.39, (3.0, 2.0): 6.4,   (3.0, 4.0): 4.21,
-    (4.0, 1.0): 10.81, (4.0, 2.0): 7.22,  (4.0, 3.0): 5.28,
+    (1.0, 2.0): 6.03,  (1.0, 3.0): 8.02,  (1.0, 4.0): 6.04,
+    (2.0, 1.0): 12.04, (2.0, 3.0): 4.02,  (2.0, 4.0): 3.01,
+    (3.0, 1.0): 12.04, (3.0, 2.0): 4.01,  (3.0, 4.0): 3.01,  # floored (median 0.00)
+    (4.0, 1.0): 12.06, (4.0, 2.0): 3.69,  (4.0, 3.0): 4.02,  # floored (median 0.00)
 }
 
 # DVFS transition energy (J) = Trans_P95_W × stall_latency
