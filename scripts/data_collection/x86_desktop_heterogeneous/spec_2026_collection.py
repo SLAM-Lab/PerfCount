@@ -27,8 +27,8 @@ if __name__ == "__main__":
         f.write("#!/bin/bash\n\n")
         count = 0
 
-        # --- SPEC 2026 P-Core Collection (17 counter groups, runs 0-16) ---
-        for run_number in range(0, 17):
+        # --- SPEC 2026 P-Core Collection (17 counter groups, runs 0-16, plus run 100 for power) ---
+        for run_number in list(range(0, 17)) + [100]:
             for freq in frequencies:
                 for cpu in p_cpus:
                     for benchmark in spec_benchmarks:
@@ -43,8 +43,8 @@ if __name__ == "__main__":
                         f.write(command + "\n")
                         count += 1
 
-        # --- SPEC 2026 E-Core Collection (12 counter groups, run 10 removed: topdown unsupported on Atom) ---
-        for run_number in [r for r in range(13) if r != 10]:
+        # --- SPEC 2026 E-Core Collection (12 counter groups, run 10 removed: topdown unsupported on Atom, plus run 100 for power) ---
+        for run_number in [r for r in range(13) if r != 10] + [100]:
             for freq in frequencies:
                 for cpu in e_cpus:
                     for benchmark in spec_benchmarks:
