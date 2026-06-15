@@ -119,8 +119,8 @@ def build_transition_matrices(configs):
                     
     return lat_mat, nrg_mat
 
-def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs):
-    data = load_phase_data(wl, ph, input_path, configs)
+def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs, power_mode='per_sample'):
+    data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode)
     if data is None: return None
     
     time_mat, energy_mat, proxy_signal, valid_configs, min_len = data
@@ -247,6 +247,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, required=True)
     parser.add_argument('--output_dir', type=str, required=True)
+    parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
+                         help="'per_sample' uses measured per-chunk power (default); "
+                              "'baseline' uses the fixed get_power_w lookup table for all configs.")
     args = parser.parse_args()
     
     input_path = Path(args.input_dir)
@@ -262,7 +265,7 @@ def main():
     
     all_summary = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {executor.submit(process_workload, wl, ph, pairs, input_path, bar_dir, trace_dir, configs): (wl, ph) for wl, ph in pairs}
+        futures = {executor.submit(process_workload, wl, ph, pairs, input_path, bar_dir, trace_dir, configs, args.power_mode): (wl, ph) for wl, ph in pairs}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res: all_summary.extend(res)

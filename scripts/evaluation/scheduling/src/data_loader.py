@@ -9,7 +9,7 @@ def get_power_w(config_str):
     }
     return power_map.get(config_str, 10.0)
 
-def load_phase_data(wl, ph, input_path, configs):
+def load_phase_data(wl, ph, input_path, configs, power_mode='per_sample'):
     speedup_files = list(input_path.glob(f"speedups_*_{wl}_phase{ph}.csv"))
     if not speedup_files: return None
     
@@ -49,10 +49,11 @@ def load_phase_data(wl, ph, input_path, configs):
 
     # Use measured per-chunk power where available; fall back to the fixed
     # get_power_w lookup table for configs with no measured power data
-    # (e.g. the P_5.0GHz placeholder).
+    # (e.g. the P_5.0GHz placeholder). In 'baseline' mode, ignore measured
+    # power entirely and use the fixed lookup table for every config.
     power_mat = np.zeros((min_len, len(configs)))
     for i, cfg in enumerate(configs):
-        if cfg in power_dict:
+        if power_mode == 'per_sample' and cfg in power_dict:
             power_mat[:, i] = power_dict[cfg][:min_len]
         else:
             power_mat[:, i] = get_power_w(cfg)
