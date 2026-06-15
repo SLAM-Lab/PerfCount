@@ -1,230 +1,134 @@
 # dvfs_policies.py
+#
+# Single-core (P or E) DVFS policies. Each is now a thin wrapper around
+# decision_policies.make_policy_from_idx_list - the temporal axis (Reactive
+# vs Oracle) and decision axis (Greedy/MPC/Global/Heuristic) are supplied by
+# decision_policies.py / temporal_policies.py.
 import numpy as np
+
+from decision_policies import make_policy_from_idx_list
+
+
+def _core_idx_list_fn(core_type):
+    def idx_list_fn(configs, valid_configs):
+        return sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
+    return idx_list_fn
+
 
 # ==========================================
 # 1. STATIC PINNED POLICIES
 # ==========================================
+def _decide_heuristic_static(ctx, state):
+    return 0, state
+
+
 def make_static(target_cfg):
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx = configs.index(target_cfg)
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        
-        for i in range(n_chunks):
-            # No transition costs, just static execution
-            step_t = time_mat[i, idx]
-            step_e = energy_mat[i, idx]
-            cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
+    def idx_list_fn(configs, valid_configs):
+        return [configs.index(target_cfg)]
+
+    return make_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=lambda idx_list, valid_configs: 0,
+        heuristic_fn=_decide_heuristic_static,
+    )
+
 
 # ==========================================
-# 2. REACTIVE 1-TIMESTEP (1 Chunk Hindsight)
+# 2. REACTIVE 1-TIMESTEP (Greedy, Reactive)
 # ==========================================
 def make_reactive_1_step(core_type):
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        m_mat = energy_mat * (time_mat**(2 if metric == 'ED2P' else 1))
-        # FIX: Ensure idx_list is sorted for consistent argmin mapping
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
-        
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            if i > 0: 
-                prev = curr # Track previous state to calculate real transition cost
-                curr = idx_list[np.argmin(m_mat[i-1, idx_list])]
-                lat = trans_lat[prev, curr] 
-                nrg = trans_nrg[prev, curr]
-            else:
-                lat, nrg = 0, 0
-            
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='greedy',
+        window_size=1,
+    )
+
 
 # ==========================================
-# 3. PROACTIVE 1-TIMESTEP (1 Chunk Foresight)
+# 3. PROACTIVE 1-TIMESTEP (Greedy, Oracle)
 # ==========================================
 def make_proactive_1_step(core_type):
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
-        
-        prev = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            best_val, best_curr = np.inf, prev
-            for c in idx_list:
-                lat = trans_lat[prev, c] if i > 0 else 0
-                nrg = trans_nrg[prev, c] if i > 0 else 0
-                val = (nrg + energy_mat[i, c]) * ((lat + time_mat[i, c])**(2 if metric == 'ED2P' else 1))
-                if val < best_val:
-                    best_val = val
-                    best_curr = c
-            
-            curr = best_curr
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            
-            cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev = curr
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='oracle',
+        decision_mode='greedy',
+        window_size=1,
+    )
+
 
 # ==========================================
-# 4. GLOBAL PROACTIVE ORACLE (Viterbi pinned)
+# 4. GLOBAL PROACTIVE ORACLE (Global, Oracle)
 # ==========================================
 def make_global_viterbi(core_type):
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
-        
-        sub_t = time_mat[:, idx_list]
-        sub_e = energy_mat[:, idx_list]
-        sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
-        sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
-        
-        dp_m = np.zeros((n_chunks, len(idx_list)))
-        parent_mat = np.zeros((n_chunks, len(idx_list)), dtype=int)
-        dp_m[0, :] = sub_e[0, :] * (sub_t[0, :] ** (2 if metric == 'ED2P' else 1))
-        idx_arr = np.arange(len(idx_list))
-        
-        for i in range(1, n_chunks):
-            lat_costs = sub_lat + sub_t[i, :]
-            nrg_costs = sub_nrg + sub_e[i, :]
-            step_metrics = nrg_costs * (lat_costs ** (2 if metric == 'ED2P' else 1))
-            vals = dp_m[i-1, :][:, None] + step_metrics
-            best_prev = np.argmin(vals, axis=0)
-            dp_m[i, :] = vals[best_prev, idx_arr]
-            parent_mat[i, :] = best_prev
-                        
-        best_idx = np.argmin(dp_m[-1, :])
-        path = np.zeros(n_chunks, dtype=int)
-        curr = best_idx
-        path[-1] = curr
-        for i in range(n_chunks - 1, 0, -1):
-            curr = parent_mat[i, curr]
-            path[i-1] = curr
-            
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        prev = path[0]
-        for i in range(n_chunks):
-            lat = sub_lat[prev, path[i]] if i > 0 else 0
-            nrg = sub_nrg[prev, path[i]] if i > 0 else 0
-            step_t = lat + sub_t[i, path[i]]
-            step_e = nrg + sub_e[i, path[i]]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev = path[i]
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='oracle',
+        decision_mode='global',
+    )
+
+
+# ==========================================
+# PROACTIVE N-STEP MPC (MPC, Oracle)
+# ==========================================
+def make_proactive_n_step(core_type, horizon):
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='oracle',
+        decision_mode='mpc',
+        window_size=horizon,
+    )
+
+
+# ==========================================
+# 5. LINUX PERFORMANCE GOVERNOR (Heuristic, Reactive)
+# ==========================================
+def _decide_heuristic_performance_governor(ctx, state):
+    n = ctx['sub_t'].shape[1]
+    return n - 1, state
+
 
 def run_performance_governor(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
     """Linux 'performance' CPUfreq governor: always pins to maximum frequency."""
-    n_chunks = len(time_mat)
-    p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-    if not p_idx: return np.zeros(n_chunks)
+    policy = make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn('P'),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=_decide_heuristic_performance_governor,
+    )
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
 
-    curr = p_idx[-1]
-    trace, cum_m = np.zeros(n_chunks), 0.0
-    for i in range(n_chunks):
-        prev = curr
-        curr = p_idx[-1]
-        lat = trans_lat[prev, curr] if i > 0 else 0
-        nrg = trans_nrg[prev, curr] if i > 0 else 0
-        step_t = lat + time_mat[i, curr]
-        step_e = nrg + energy_mat[i, curr]
-        cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-        trace[i] = cum_m
-    return trace
-
-def run_intel_hwp(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-    n_chunks = len(time_mat)
-    p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-    if not p_idx: return np.zeros(n_chunks)
-    
-    curr = p_idx[-1]
-    trace, cum_m = np.zeros(n_chunks), 0.0
-    for i in range(n_chunks):
-        prev = curr
-        if i > 0:
-            raw_proxy = proxy_signal[i-1]
-            hwp_ratio = np.clip((raw_proxy - 1.0) / 2.5, 0.0, 1.0)
-            hwp_target = int(hwp_ratio * (len(p_idx) - 1))
-            curr = p_idx[hwp_target]
-            
-        lat = trans_lat[prev, curr] if i > 0 else 0
-        nrg = trans_nrg[prev, curr] if i > 0 else 0
-        step_t = lat + time_mat[i, curr]
-        step_e = nrg + energy_mat[i, curr]
-        cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-        trace[i] = cum_m
-    return trace
-
-def make_proactive_n_step(core_type, horizon):
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
-        
-        sub_t = time_mat[:, idx_list]
-        sub_e = energy_mat[:, idx_list]
-        sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
-        sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
-        
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        prev_idx = len(idx_list) - 1 # Assume starting at max frequency
-        
-        for i in range(n_chunks):
-            window_len = min(horizon, n_chunks - i)
-            dp_m = np.zeros((window_len, len(idx_list)))
-            parent_mat = np.zeros((window_len, len(idx_list)), dtype=int)
-            
-            # Use actual current state to calculate first lookahead step costs
-            lat_costs_0 = sub_lat[prev_idx, :] + sub_t[i, :]
-            nrg_costs_0 = sub_nrg[prev_idx, :] + sub_e[i, :]
-            dp_m[0, :] = nrg_costs_0 * (lat_costs_0 ** (2 if metric == 'ED2P' else 1))
-            
-            idx_arr = np.arange(len(idx_list))
-            for w in range(1, window_len):
-                lat_costs = sub_lat + sub_t[i+w, :]
-                nrg_costs = sub_nrg + sub_e[i+w, :]
-                step_metrics = nrg_costs * (lat_costs ** (2 if metric == 'ED2P' else 1))
-                vals = dp_m[w-1, :][:, None] + step_metrics
-                best_prev = np.argmin(vals, axis=0)
-                dp_m[w, :] = vals[best_prev, idx_arr]
-                parent_mat[w, :] = best_prev
-            
-            best_final = np.argmin(dp_m[window_len-1, :])
-            curr_step = best_final
-            for w in range(window_len-1, 0, -1):
-                curr_step = parent_mat[w, curr_step]
-            
-            best_action = curr_step
-            lat = sub_lat[prev_idx, best_action] if i > 0 else 0
-            nrg = sub_nrg[prev_idx, best_action] if i > 0 else 0
-            step_t = lat + sub_t[i, best_action]
-            step_e = nrg + sub_e[i, best_action]
-            
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev_idx = best_action
-        return trace
-    return policy
 
 # ==========================================
-# 5. LINUX ONDEMAND GOVERNOR
+# 6. INTEL HWP (Heuristic, Reactive)
+# ==========================================
+def _decide_heuristic_intel_hwp(ctx, state):
+    if ctx['i'] == 0:
+        return ctx['start_idx'], state
+    n = ctx['sub_t'].shape[1]
+    raw_proxy = ctx['proxy_window'][-1]
+    hwp_ratio = np.clip((raw_proxy - 1.0) / 2.5, 0.0, 1.0)
+    hwp_target = int(hwp_ratio * (n - 1))
+    return hwp_target, state
+
+
+def run_intel_hwp(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+    policy = make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn('P'),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=_decide_heuristic_intel_hwp,
+    )
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+
+
+# ==========================================
+# 7. LINUX ONDEMAND GOVERNOR (Heuristic, Reactive)
 # ==========================================
 def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20):
     """
@@ -233,33 +137,28 @@ def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20):
     drops to min frequency when below down_thresh; otherwise holds current level.
     Proxy signal is normalized to [0,1] via clip((proxy-1)/2.5).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        n = ctx['sub_t'].shape[1]
+        util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        if util >= up_thresh:
+            return n - 1, state
+        elif util <= down_thresh:
+            return 0, state
+        return ctx['prev_idx'], state
 
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                if util >= up_thresh:
-                    curr = idx_list[-1]
-                elif util <= down_thresh:
-                    curr = idx_list[0]
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+    )
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
 
 # ==========================================
-# 6. LINUX CONSERVATIVE GOVERNOR
+# 8. LINUX CONSERVATIVE GOVERNOR (Heuristic, Reactive)
 # ==========================================
 def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20):
     """
@@ -268,35 +167,29 @@ def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20):
     large transition costs of ondemand's jumps to max/min.
     Reference: Linux kernel CPUfreq documentation.
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        n = ctx['sub_t'].shape[1]
+        level = state.get('level', n - 1)
+        if ctx['i'] == 0:
+            return level, state
+        util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        if util >= up_thresh:
+            level = min(level + 1, n - 1)
+        elif util <= down_thresh:
+            level = max(level - 1, 0)
+        return level, {'level': level}
 
-        level = len(idx_list) - 1
-        prev_cfg = idx_list[level]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            if i > 0:
-                util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                if util >= up_thresh:
-                    level = min(level + 1, len(idx_list) - 1)
-                elif util <= down_thresh:
-                    level = max(level - 1, 0)
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+    )
 
-            curr_cfg = idx_list[level]
-            lat = trans_lat[prev_cfg, curr_cfg] if i > 0 else 0
-            nrg = trans_nrg[prev_cfg, curr_cfg] if i > 0 else 0
-            step_t = lat + time_mat[i, curr_cfg]
-            step_e = nrg + energy_mat[i, curr_cfg]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev_cfg = curr_cfg
-        return trace
-    return policy
 
 # ==========================================
-# 7. LINUX SCHEDUTIL (PELT-Based)
+# 9. LINUX SCHEDUTIL (PELT-Based) (Heuristic, Reactive)
 # ==========================================
 def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25):
     """
@@ -306,34 +199,28 @@ def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25):
     frequency level satisfying: freq >= util_ewma * headroom * max_freq.
     alpha controls EWMA decay; headroom (>1.0) reserves margin above predicted load.
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        n = ctx['sub_t'].shape[1]
+        util_ewma = state.get('util_ewma', 1.0)
+        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        target_ratio = min(util_ewma * headroom, 1.0)
+        target_level = int(np.round(target_ratio * (n - 1)))
+        return int(np.clip(target_level, 0, n - 1)), {'util_ewma': util_ewma}
 
-        util_ewma = 1.0
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
-                target_ratio = min(util_ewma * headroom, 1.0)
-                target_level = int(np.round(target_ratio * (len(idx_list) - 1)))
-                curr = idx_list[np.clip(target_level, 0, len(idx_list) - 1)]
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+    )
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
 
 # ==========================================
-# 8. EWMA PREDICTOR (Weiser et al., 1994)
+# 10. EWMA PREDICTOR (Weiser et al., 1994) (Heuristic, Reactive)
 # ==========================================
 def make_ewma_dvfs(core_type, alpha=0.5):
     """
@@ -342,33 +229,27 @@ def make_ewma_dvfs(core_type, alpha=0.5):
     proxy signal, then runs at the minimum frequency sufficient for that prediction.
     alpha controls how quickly the predictor tracks changes (higher = more reactive).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        n = ctx['sub_t'].shape[1]
+        pred = state.get('pred', 1.0)
+        actual = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        pred = alpha * actual + (1.0 - alpha) * pred
+        target_level = int(np.ceil(pred * (n - 1)))
+        return int(np.clip(target_level, 0, n - 1)), {'pred': pred}
 
-        pred = 1.0
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                actual = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                pred = alpha * actual + (1.0 - alpha) * pred
-                target_level = int(np.ceil(pred * (len(idx_list) - 1)))
-                curr = idx_list[np.clip(target_level, 0, len(idx_list) - 1)]
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+    )
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
 
 # ==========================================
-# 9. UCB1 ONLINE BANDIT DVFS
+# 11. UCB1 ONLINE BANDIT DVFS (Heuristic, Reactive)
 # ==========================================
 def make_ucb1_dvfs(core_type, c=1.0):
     """
@@ -379,45 +260,49 @@ def make_ucb1_dvfs(core_type, c=1.0):
     Initialization: round-robins through all arms once before exploiting.
     c controls the exploration-exploitation tradeoff (larger = more exploration).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
-        n_arms = len(idx_list)
+    def decide(ctx, state):
+        n = ctx['sub_t'].shape[1]
+        i = ctx['i']
+        counts = state.get('counts', np.zeros(n))
+        values = state.get('values', np.zeros(n))
+        max_cost_seen = state.get('max_cost_seen', 1e-12)
+        p = 2 if ctx['metric'] == 'ED2P' else 1
 
-        counts = np.zeros(n_arms)
-        values = np.zeros(n_arms)   # Mean normalized reward per arm
-        max_cost_seen = 1e-12       # Running normalizer to keep rewards in [-1, 0]
+        if i < n:
+            arm = i
+        else:
+            ucb = values + c * np.sqrt(2.0 * np.log(i) / counts)
+            arm = int(np.argmax(ucb))
 
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            if i < n_arms:
-                arm = i  # Round-robin initialization: try each frequency once
-            else:
-                ucb = values + c * np.sqrt(2.0 * np.log(i) / counts)
-                arm = int(np.argmax(ucb))
+        prev_idx = ctx['prev_idx']
+        if prev_idx is None:
+            lat, nrg = 0.0, 0.0
+        else:
+            lat, nrg = ctx['sub_lat'][prev_idx, arm], ctx['sub_nrg'][prev_idx, arm]
+        step_t = lat + ctx['sub_t'][i, arm]
+        step_e = nrg + ctx['sub_e'][i, arm]
+        step_m = step_e * (step_t ** p)
 
-            curr = idx_list[arm]
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            step_m = step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+        max_cost_seen = max(max_cost_seen, step_m)
+        reward = -step_m / max_cost_seen
+        counts = counts.copy()
+        values = values.copy()
+        counts[arm] += 1
+        values[arm] += (reward - values[arm]) / counts[arm]
 
-            max_cost_seen = max(max_cost_seen, step_m)
-            reward = -step_m / max_cost_seen
-            counts[arm] += 1
-            values[arm] += (reward - values[arm]) / counts[arm]
+        return arm, {'counts': counts, 'values': values, 'max_cost_seen': max_cost_seen}
 
-            cum_m += step_m
-            trace[i] = cum_m
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+    )
+
 
 # ==========================================
-# 10. RANDOM POLICY (Lower Bound)
+# 12. RANDOM POLICY (Lower Bound) (Heuristic, Reactive)
 # ==========================================
 def make_random_dvfs(core_type, seed=42):
     """
@@ -425,22 +310,16 @@ def make_random_dvfs(core_type, seed=42):
     Serves as a lower bound for online learning policies (UCB1, EWMA).
     A fixed seed ensures reproducibility across workloads and metric types.
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        rng = np.random.default_rng(seed)
-        n_chunks = len(time_mat)
-        idx_list = sorted([configs.index(c) for c in valid_configs if c.startswith(core_type)])
-        if not idx_list: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        n = ctx['sub_t'].shape[1]
+        rng = state['rng']
+        return int(rng.integers(n)), state
 
-        curr = idx_list[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            curr = idx_list[rng.integers(len(idx_list))]
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+        initial_state=lambda: {'rng': np.random.default_rng(seed)},
+    )

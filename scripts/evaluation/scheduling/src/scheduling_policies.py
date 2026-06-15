@@ -1,214 +1,130 @@
 # scheduling_policies.py
+#
+# Heterogeneous (P+E) core-placement + DVFS scheduling policies. Oracle/
+# Global policies and SOTA/heuristic governors are thin wrappers around
+# decision_policies.make_policy_from_idx_list.
 import numpy as np
 
-# ADDED proxy_signal to the arguments list here:
+from decision_policies import make_policy_from_idx_list
+
+
+def _full_idx_list_fn(configs, valid_configs):
+    return [configs.index(c) for c in valid_configs]
+
+
+def _last_core_local_idx(valid_configs, core_type):
+    """Local index (within the full valid_configs ordering) of the last
+    (max-frequency) config of the given core type, or 0 if none exists."""
+    positions = [i for i, c in enumerate(valid_configs) if c.startswith(core_type)]
+    return positions[-1] if positions else 0
+
+
+def _p_max_start_idx(idx_list, valid_configs):
+    return _last_core_local_idx(valid_configs, 'P')
+
+
+# ==========================================
+# GLOBAL HETERO ORACLE (Global, Oracle, full P+E x freq grid)
+# ==========================================
 def run_proactive_hetero_oracle(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-    """Viterbi Dynamic Programming for Global Minimum."""
-    n_chunks, n_configs = time_mat.shape
-    if n_chunks == 0: return np.zeros(n_chunks)
-    
-    dp_m = np.zeros((n_chunks, n_configs))
-    parent_mat = np.zeros((n_chunks, n_configs), dtype=int)
-    dp_m[0, :] = energy_mat[0, :] * (time_mat[0, :] ** (2 if metric == 'ED2P' else 1))
-    idx_arr = np.arange(n_configs)
-    
-    for i in range(1, n_chunks):
-        lat_costs = trans_lat + time_mat[i, :]
-        nrg_costs = trans_nrg + energy_mat[i, :]
-        step_metrics = nrg_costs * (lat_costs ** (2 if metric == 'ED2P' else 1))
-        vals = dp_m[i-1, :][:, None] + step_metrics
-        best_prev = np.argmin(vals, axis=0)
-        dp_m[i, :] = vals[best_prev, idx_arr]
-        parent_mat[i, :] = best_prev
-                    
-    best_idx = np.argmin(dp_m[-1, :])
-    path = np.zeros(n_chunks, dtype=int)
-    curr = best_idx
-    path[-1] = curr
-    for i in range(n_chunks - 1, 0, -1):
-        curr = parent_mat[i, curr]
-        path[i-1] = curr
-        
-    trace, cum_m = np.zeros(n_chunks), 0.0
-    prev = path[0]
-    for i in range(n_chunks):
-        lat = trans_lat[prev, path[i]] if i > 0 else 0
-        nrg = trans_nrg[prev, path[i]] if i > 0 else 0
-        step_t = lat + time_mat[i, path[i]]
-        step_e = nrg + energy_mat[i, path[i]]
-        cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-        trace[i] = cum_m
-        prev = path[i]
-    return trace
+    """Viterbi Dynamic Programming for Global Minimum across the full P+E x freq grid."""
+    policy = make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='oracle',
+        decision_mode='global',
+    )
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+
+
+# ==========================================
+# MICRO EAS (Heuristic, Reactive, simplified 2-config P<->E)
+# ==========================================
+def _decide_heuristic_micro_eas(ctx, state):
+    if 'p_idx' not in state:
+        valid = ctx['valid_configs']
+        state = dict(state)
+        state['p_idx'] = [k for k, c in enumerate(valid) if c.startswith('P')]
+        state['e_idx'] = [k for k, c in enumerate(valid) if c.startswith('E')]
+        state['e_mid'] = state['e_idx'][len(state['e_idx']) // 2]
+        state['p_max'] = state['p_idx'][-1]
+        state['mig_nrg_cost'] = ctx['sub_nrg'][state['p_max'], state['e_mid']]
+
+    p_idx, e_mid, p_max, mig_nrg_cost = state['p_idx'], state['e_mid'], state['p_max'], state['mig_nrg_cost']
+
+    curr = ctx['start_idx'] if ctx['i'] == 0 else ctx['prev_idx']
+    if ctx['i'] > 0:
+        if curr in p_idx:
+            e_saving = ctx['prev_e'][curr] - ctx['prev_e'][e_mid]
+            if e_saving > mig_nrg_cost:
+                curr = e_mid
+        else:
+            if ctx['proxy_window'][-1] > 2.5:
+                curr = p_max
+    return curr, state
+
 
 def run_micro_eas(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-    n_chunks = len(time_mat)
-    p_idx = [configs.index(c) for c in valid_configs if c.startswith('P')]
-    e_idx = [configs.index(c) for c in valid_configs if c.startswith('E')]
-    if not p_idx or not e_idx: return np.zeros(n_chunks)
-    
-    curr = p_idx[-1]
-    e_mid = e_idx[len(e_idx)//2]
-    p_max = p_idx[-1]
-    mig_nrg_cost = trans_nrg[p_max, e_mid] # Get base migration energy cost
-    
-    trace, cum_m = np.zeros(n_chunks), 0.0
-    for i in range(n_chunks):
-        prev_curr = curr
-        if i > 0:
-            if curr in p_idx:
-                e_saving = energy_mat[i-1, curr] - energy_mat[i-1, e_mid]
-                if e_saving > mig_nrg_cost: curr = e_mid
-            else:
-                if proxy_signal[i-1] > 2.5: curr = p_max
-                
-        step_t = trans_lat[prev_curr, curr] + time_mat[i, curr] if i > 0 else time_mat[i, curr]
-        step_e = trans_nrg[prev_curr, curr] + energy_mat[i, curr] if i > 0 else energy_mat[i, curr]
-        cum_m += step_e * (step_t**(2 if metric == 'ED2P' else 1))
-        trace[i] = cum_m
-    return trace
+    policy = make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=_decide_heuristic_micro_eas,
+    )
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+
+
+# ==========================================
+# REACTIVE / PROACTIVE N-STEP, FIXED FREQUENCY (IsoFreq ablations)
+# ==========================================
+def _fixed_freq_idx_list_fn(target_freq):
+    def idx_list_fn(configs, valid_configs):
+        return [configs.index(c) for c in valid_configs if target_freq in c]
+    return idx_list_fn
+
+
+def _fixed_freq_start_idx_fn(target_freq):
+    def start_idx_fn(idx_list, valid_configs):
+        freq_configs = [c for c in valid_configs if target_freq in c]
+        p_positions = [i for i, c in enumerate(freq_configs) if c.startswith('P')]
+        return p_positions[0] if p_positions else 0
+    return start_idx_fn
+
 
 def make_reactive_n_step_fixed_freq(lookback, target_freq):
     """Reactive History Lookback locked to a specific frequency."""
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        # Filter configurations to ONLY those matching the target frequency
-        freq_configs = [c for c in valid_configs if target_freq in c]
-        if not freq_configs: return np.zeros(n_chunks)
-        
-        idx_list = [configs.index(c) for c in freq_configs]
-        m_mat = energy_mat * (time_mat**(2 if metric == 'ED2P' else 1))
-        
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        
-        # Start on P-Core of that frequency if available, else E-core
-        p_idx_list = [configs.index(c) for c in freq_configs if c.startswith('P')]
-        prev_idx = p_idx_list[0] if p_idx_list else idx_list[0]
-        
-        for i in range(n_chunks):
-            if i > 0:
-                start_idx = max(0, i - lookback)
-                past_perf = np.sum(m_mat[start_idx:i, idx_list], axis=0)
-                best_action = idx_list[np.argmin(past_perf)]
-            else:
-                best_action = prev_idx
-                
-            lat = trans_lat[prev_idx, best_action] if i > 0 else 0
-            nrg = trans_nrg[prev_idx, best_action] if i > 0 else 0
-            step_t = lat + time_mat[i, best_action]
-            step_e = nrg + energy_mat[i, best_action]
-            
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev_idx = best_action
-            
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_fixed_freq_idx_list_fn(target_freq),
+        temporal_mode='reactive',
+        decision_mode='mpc',
+        window_size=lookback,
+        start_idx_fn=_fixed_freq_start_idx_fn(target_freq),
+    )
+
 
 def make_proactive_n_step_fixed_freq(horizon, target_freq):
     """Proactive MPC Lookahead locked to a specific frequency."""
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        freq_configs = [c for c in valid_configs if target_freq in c]
-        if not freq_configs: return np.zeros(n_chunks)
-        
-        idx_list = [configs.index(c) for c in freq_configs]
-        sub_t = time_mat[:, idx_list]
-        sub_e = energy_mat[:, idx_list]
-        sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
-        sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
-        
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        p_idx_list = [i for i, c in enumerate(freq_configs) if c.startswith('P')]
-        prev_idx = p_idx_list[0] if p_idx_list else 0
-        
-        for i in range(n_chunks):
-            window_len = min(horizon, n_chunks - i)
-            dp_m = np.zeros((window_len, len(idx_list)))
-            parent_mat = np.zeros((window_len, len(idx_list)), dtype=int)
-            
-            lat_costs_0 = sub_lat[prev_idx, :] + sub_t[i, :] if i > 0 else sub_t[i, :]
-            nrg_costs_0 = sub_nrg[prev_idx, :] + sub_e[i, :] if i > 0 else sub_e[i, :]
-            dp_m[0, :] = nrg_costs_0 * (lat_costs_0 ** (2 if metric == 'ED2P' else 1))
-            
-            idx_arr = np.arange(len(idx_list))
-            for w in range(1, window_len):
-                lat_costs = sub_lat + sub_t[i+w, :]
-                nrg_costs = sub_nrg + sub_e[i+w, :]
-                step_metrics = nrg_costs * (lat_costs ** (2 if metric == 'ED2P' else 1))
-                
-                vals = dp_m[w-1, :][:, None] + step_metrics
-                best_prev = np.argmin(vals, axis=0)
-                dp_m[w, :] = vals[best_prev, idx_arr]
-                parent_mat[w, :] = best_prev
-            
-            curr_step = np.argmin(dp_m[window_len-1, :])
-            for w in range(window_len-1, 0, -1):
-                curr_step = parent_mat[w, curr_step]
-            
-            best_action = curr_step
-            lat = sub_lat[prev_idx, best_action] if i > 0 else 0
-            nrg = sub_nrg[prev_idx, best_action] if i > 0 else 0
-            step_t = lat + sub_t[i, best_action]
-            step_e = nrg + sub_e[i, best_action]
-            
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev_idx = best_action
-            
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_fixed_freq_idx_list_fn(target_freq),
+        temporal_mode='oracle',
+        decision_mode='mpc',
+        window_size=horizon,
+        start_idx_fn=_fixed_freq_start_idx_fn(target_freq),
+    )
+
 
 def make_global_oracle_fixed_freq(target_freq):
     """Global Viterbi DP locked to a specific frequency."""
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        freq_configs = [c for c in valid_configs if target_freq in c]
-        if not freq_configs: return np.zeros(n_chunks)
-        
-        idx_list = [configs.index(c) for c in freq_configs]
-        sub_t = time_mat[:, idx_list]
-        sub_e = energy_mat[:, idx_list]
-        sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
-        sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
-        
-        dp_m = np.zeros((n_chunks, len(idx_list)))
-        parent_mat = np.zeros((n_chunks, len(idx_list)), dtype=int)
-        dp_m[0, :] = sub_e[0, :] * (sub_t[0, :] ** (2 if metric == 'ED2P' else 1))
-        idx_arr = np.arange(len(idx_list))
-        
-        for i in range(1, n_chunks):
-            lat_costs = sub_lat + sub_t[i, :]
-            nrg_costs = sub_nrg + sub_e[i, :]
-            step_metrics = nrg_costs * (lat_costs ** (2 if metric == 'ED2P' else 1))
-            vals = dp_m[i-1, :][:, None] + step_metrics
-            best_prev = np.argmin(vals, axis=0)
-            dp_m[i, :] = vals[best_prev, idx_arr]
-            parent_mat[i, :] = best_prev
-                        
-        best_idx = np.argmin(dp_m[-1, :])
-        path = np.zeros(n_chunks, dtype=int)
-        curr = best_idx
-        path[-1] = curr
-        for i in range(n_chunks - 1, 0, -1):
-            curr = parent_mat[i, curr]
-            path[i-1] = curr
-            
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        prev = path[0]
-        for i in range(n_chunks):
-            lat = sub_lat[prev, path[i]] if i > 0 else 0
-            nrg = sub_nrg[prev, path[i]] if i > 0 else 0
-            step_t = lat + sub_t[i, path[i]]
-            step_e = nrg + sub_e[i, path[i]]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-            prev = path[i]
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_fixed_freq_idx_list_fn(target_freq),
+        temporal_mode='oracle',
+        decision_mode='global',
+    )
+
 
 # ==========================================
-# 5. LINUX EAS (Energy Aware Scheduling)
+# LINUX EAS (Energy Aware Scheduling) (Heuristic, Reactive)
 # ==========================================
 def make_eas_hetero(alpha=0.25, perf_slack=0.10):
     """
@@ -218,44 +134,46 @@ def make_eas_hetero(alpha=0.25, perf_slack=0.10):
     PELT-style EWMA smooths utilization for scheduling stability.
     Ref: Quentin Perret et al., "An Energy Model for the Linux Kernel" (ELC 2018).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = [configs.index(c) for c in valid_configs]
-        p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-        e_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('E')])
-        if not p_idx or not e_idx: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if 'p_idx' not in state:
+            valid = ctx['valid_configs']
+            state = dict(state)
+            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
+            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
+
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+
+        p_idx, e_idx = state['p_idx'], state['e_idx']
+        n = ctx['sub_t'].shape[1]
+        util_ewma = state.get('util_ewma', 1.0)
+        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
 
         p_max = p_idx[-1]
-        util_ewma = 1.0
-        curr = p_max
-        trace, cum_m = np.zeros(n_chunks), 0.0
+        perf_limit = ctx['prev_t'][p_max] * (1.0 + perf_slack)
+        feasible = [c for c in range(n) if ctx['prev_t'][c] <= perf_limit]
+        if not feasible:
+            feasible = p_idx
 
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        action = min(feasible, key=lambda c: ctx['prev_e'][c])
 
-                # Performance constraint: prev-chunk time <= P_max * (1 + perf_slack)
-                perf_limit = time_mat[i - 1, p_max] * (1.0 + perf_slack)
-                feasible = [c for c in idx_list if time_mat[i - 1, c] <= perf_limit]
-                if not feasible:
-                    feasible = p_idx
+        state = dict(state)
+        state['util_ewma'] = util_ewma
+        return action, state
 
-                # EAS objective: minimum energy among feasible configs
-                curr = min(feasible, key=lambda c: energy_mat[i - 1, c])
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+    )
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
 
 # ==========================================
-# 6. THRESHOLD MIGRATION WITH HYSTERESIS
+# THRESHOLD MIGRATION WITH HYSTERESIS (Heuristic, Reactive)
 # ==========================================
 def make_threshold_migration(up_thresh=0.60, down_thresh=0.30, alpha=0.25):
     """
@@ -267,42 +185,46 @@ def make_threshold_migration(up_thresh=0.60, down_thresh=0.30, alpha=0.25):
     Ref: ARM big.LITTLE Technology: The Future of Mobile (Greenhalgh 2011);
          ARM GTS (Global Task Scheduling) white paper.
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-        e_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('E')])
-        if not p_idx or not e_idx: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if 'p_max' not in state:
+            valid = ctx['valid_configs']
+            state = dict(state)
+            state['p_max'] = _last_core_local_idx(valid, 'P')
+            state['e_max'] = _last_core_local_idx(valid, 'E')
 
-        p_max, e_max = p_idx[-1], e_idx[-1]
-        on_p_core = True
-        util_ewma = 1.0
-        curr = p_max
-        trace, cum_m = np.zeros(n_chunks), 0.0
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
 
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        p_max, e_max = state['p_max'], state['e_max']
+        on_p_core = state.get('on_p_core', True)
+        util_ewma = state.get('util_ewma', 1.0)
+        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
 
-                if on_p_core and util_ewma < down_thresh:
-                    on_p_core = False
-                elif not on_p_core and util_ewma > up_thresh:
-                    on_p_core = True
+        if on_p_core and util_ewma < down_thresh:
+            on_p_core = False
+        elif not on_p_core and util_ewma > up_thresh:
+            on_p_core = True
 
-                curr = p_max if on_p_core else e_max
+        action = p_max if on_p_core else e_max
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
+        state = dict(state)
+        state['on_p_core'] = on_p_core
+        state['util_ewma'] = util_ewma
+        return action, state
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+    )
+
 
 # ==========================================
-# 7. EAS + DVFS (Combined Modern Linux)
+# EAS + DVFS (Combined Modern Linux) (Heuristic, Reactive)
 # ==========================================
 def make_eas_with_dvfs(alpha=0.25, headroom=1.25, perf_slack=0.10):
     """
@@ -313,48 +235,49 @@ def make_eas_with_dvfs(alpha=0.25, headroom=1.25, perf_slack=0.10):
     the frequency level, matching Linux schedutil governor behavior.
     Ref: Linux kernel v5.0+ EAS + schedutil interaction documentation.
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-        e_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('E')])
-        if not p_idx or not e_idx: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if 'p_idx' not in state:
+            valid = ctx['valid_configs']
+            state = dict(state)
+            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
+            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
+
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+
+        p_idx, e_idx = state['p_idx'], state['e_idx']
+        util_ewma = state.get('util_ewma', 1.0)
+        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        target_ratio = min(util_ewma * headroom, 1.0)
 
         p_max = p_idx[-1]
-        util_ewma = 1.0
-        curr = p_max
-        trace, cum_m = np.zeros(n_chunks), 0.0
+        perf_limit = ctx['prev_t'][p_max] * (1.0 + perf_slack)
+        e_feasible = sorted([c for c in e_idx if ctx['prev_t'][c] <= perf_limit])
 
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
-                target_ratio = min(util_ewma * headroom, 1.0)
+        if e_feasible:
+            level = int(np.round(target_ratio * (len(e_feasible) - 1)))
+            action = e_feasible[np.clip(level, 0, len(e_feasible) - 1)]
+        else:
+            level = int(np.round(target_ratio * (len(p_idx) - 1)))
+            action = p_idx[np.clip(level, 0, len(p_idx) - 1)]
 
-                # Step 1 (EAS): cluster selection via performance constraint
-                perf_limit = time_mat[i - 1, p_max] * (1.0 + perf_slack)
-                e_feasible = sorted([c for c in e_idx if time_mat[i - 1, c] <= perf_limit])
+        state = dict(state)
+        state['util_ewma'] = util_ewma
+        return action, state
 
-                if e_feasible:
-                    # Step 2 (schedutil): scale within E-core cluster
-                    level = int(np.round(target_ratio * (len(e_feasible) - 1)))
-                    curr = e_feasible[np.clip(level, 0, len(e_feasible) - 1)]
-                else:
-                    # Step 2 (schedutil): scale within P-core cluster
-                    level = int(np.round(target_ratio * (len(p_idx) - 1)))
-                    curr = p_idx[np.clip(level, 0, len(p_idx) - 1)]
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+    )
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
 
 # ==========================================
-# 8. INTEL THREAD DIRECTOR STYLE
+# INTEL THREAD DIRECTOR STYLE (Heuristic, Reactive)
 # ==========================================
 def make_thread_director(window=5, compute_thresh=0.60, alpha=0.25, headroom=1.25):
     """
@@ -367,47 +290,49 @@ def make_thread_director(window=5, compute_thresh=0.60, alpha=0.25, headroom=1.2
     Ref: Intel Thread Director / Enhanced Hardware Feedback Interface (EHFI),
          Intel Alder Lake Architecture (2021).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        p_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('P')])
-        e_idx = sorted([configs.index(c) for c in valid_configs if c.startswith('E')])
-        if not p_idx or not e_idx: return np.zeros(n_chunks)
+    def decide(ctx, state):
+        if 'p_idx' not in state:
+            valid = ctx['valid_configs']
+            state = dict(state)
+            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
+            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
 
-        util_ewma = 1.0
-        curr = p_idx[-1]
-        trace, cum_m = np.zeros(n_chunks), 0.0
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
 
-        for i in range(n_chunks):
-            prev = curr
-            if i > 0:
-                # Sliding-window classification (ITD hardware feedback signal analog)
-                start = max(0, i - window)
-                avg_proxy = np.mean(proxy_signal[start:i])
-                compute_score = np.clip((avg_proxy - 1.0) / 2.5, 0.0, 1.0)
+        p_idx, e_idx = state['p_idx'], state['e_idx']
+        proxy_window = ctx['proxy_window']
+        avg_proxy = np.mean(proxy_window)
+        compute_score = np.clip((avg_proxy - 1.0) / 2.5, 0.0, 1.0)
 
-                # Schedutil-style frequency scaling within chosen cluster
-                raw_util = np.clip((proxy_signal[i - 1] - 1.0) / 2.5, 0.0, 1.0)
-                util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
-                target_ratio = min(util_ewma * headroom, 1.0)
+        raw_util = np.clip((proxy_window[-1] - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = state.get('util_ewma', 1.0)
+        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        target_ratio = min(util_ewma * headroom, 1.0)
 
-                if compute_score >= compute_thresh:
-                    level = int(np.round(target_ratio * (len(p_idx) - 1)))
-                    curr = p_idx[np.clip(level, 0, len(p_idx) - 1)]
-                else:
-                    level = int(np.round(target_ratio * (len(e_idx) - 1)))
-                    curr = e_idx[np.clip(level, 0, len(e_idx) - 1)]
+        if compute_score >= compute_thresh:
+            level = int(np.round(target_ratio * (len(p_idx) - 1)))
+            action = p_idx[np.clip(level, 0, len(p_idx) - 1)]
+        else:
+            level = int(np.round(target_ratio * (len(e_idx) - 1)))
+            action = e_idx[np.clip(level, 0, len(e_idx) - 1)]
 
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            cum_m += step_e * (step_t ** (2 if metric == 'ED2P' else 1))
-            trace[i] = cum_m
-        return trace
-    return policy
+        state = dict(state)
+        state['util_ewma'] = util_ewma
+        return action, state
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=window,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+    )
+
 
 # ==========================================
-# 9. UCB1 HETERO BANDIT (Full P+E Space)
+# UCB1 HETERO BANDIT (Full P+E Space) (Heuristic, Reactive)
 # ==========================================
 def make_ucb1_hetero(c=1.0):
     """
@@ -418,42 +343,43 @@ def make_ucb1_hetero(c=1.0):
     Extends make_ucb1_dvfs (single-cluster) to the full P+E decision space.
     Ref: Auer et al., "Finite-time Analysis of the Multiarmed Bandit Problem" (2002).
     """
-    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-        n_chunks = len(time_mat)
-        idx_list = [configs.index(c) for c in valid_configs]
-        if not idx_list: return np.zeros(n_chunks)
-        n_arms = len(idx_list)
+    def decide(ctx, state):
+        n = ctx['sub_t'].shape[1]
+        i = ctx['i']
+        counts = state.get('counts', np.zeros(n))
+        values = state.get('values', np.zeros(n))
+        max_cost_seen = state.get('max_cost_seen', 1e-12)
+        p = 2 if ctx['metric'] == 'ED2P' else 1
 
-        counts = np.zeros(n_arms)
-        values = np.zeros(n_arms)
-        max_cost_seen = 1e-12
+        if i < n:
+            arm = i
+        else:
+            ucb = values + c * np.sqrt(2.0 * np.log(i) / counts)
+            arm = int(np.argmax(ucb))
 
-        p_positions = [i for i, c in enumerate(valid_configs) if c.startswith('P')]
-        start_arm = p_positions[-1] if p_positions else 0
-        curr = idx_list[start_arm]
+        prev_idx = ctx['prev_idx']
+        if prev_idx is None:
+            lat, nrg = 0.0, 0.0
+        else:
+            lat, nrg = ctx['sub_lat'][prev_idx, arm], ctx['sub_nrg'][prev_idx, arm]
+        step_t = lat + ctx['sub_t'][i, arm]
+        step_e = nrg + ctx['sub_e'][i, arm]
+        step_m = step_e * (step_t ** p)
 
-        trace, cum_m = np.zeros(n_chunks), 0.0
-        for i in range(n_chunks):
-            prev = curr
-            if i < n_arms:
-                arm = i
-            else:
-                ucb = values + c * np.sqrt(2.0 * np.log(i) / counts)
-                arm = int(np.argmax(ucb))
+        max_cost_seen = max(max_cost_seen, step_m)
+        reward = -step_m / max_cost_seen
+        counts = counts.copy()
+        values = values.copy()
+        counts[arm] += 1
+        values[arm] += (reward - values[arm]) / counts[arm]
 
-            curr = idx_list[arm]
-            lat = trans_lat[prev, curr] if i > 0 else 0
-            nrg = trans_nrg[prev, curr] if i > 0 else 0
-            step_t = lat + time_mat[i, curr]
-            step_e = nrg + energy_mat[i, curr]
-            step_m = step_e * (step_t ** (2 if metric == 'ED2P' else 1))
+        return arm, {'counts': counts, 'values': values, 'max_cost_seen': max_cost_seen}
 
-            max_cost_seen = max(max_cost_seen, step_m)
-            reward = -step_m / max_cost_seen
-            counts[arm] += 1
-            values[arm] += (reward - values[arm]) / counts[arm]
-
-            cum_m += step_m
-            trace[i] = cum_m
-        return trace
-    return policy
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+    )
