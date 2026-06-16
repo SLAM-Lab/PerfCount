@@ -27,17 +27,27 @@ WARMUP_K        = 50    # number of post-migration chunks to penalize
 
 # P↔E context switch: mean 4.47μs, symmetric within 0.1μs (ctx_switch_bench, 10 reps × 5000 migrations)
 MIG_LAT_S  = 4.47e-6
-# Migration energy: placeholder estimate (4.5μs × ~2W core power @ 3GHz).
-# RAPL-based direct measurement was attempted (continuous-spin sweep,
-# duty-cycled bench, same-core control — see power_collection/ctx_switch/
-# ctx_switch_power_freq_sweep.sh, ctx_switch_power_duty_test.sh,
-# ctx_switch_power_duty_control.sh + analyze_*.py). A single migration's
-# energy budget (~4.47μs × O(1-2W) ≈ O(1-10nJ)) is below RAPL's ~50ms /
-# ~10-50mW resolution; measured "energy per migration" varied by orders of
-# magnitude (and sign) with duty cycle / loop rate, confirming those values
-# are measurement artifacts, not signal. 9e-9 remains the best available
-# order-of-magnitude placeholder.
-MIG_NRG_J  = 9e-9
+# Migration energy (J), keyed by (P_freq, E_freq) of the two cores involved
+# in the migration: MIG_NRG_J = migration_active_power_W × MIG_LAT_S, where
+# migration_active_power_W is the median measured package power (RAPL
+# power/energy-cores) while ctx_switch_bench runs continuous P↔E migrations
+# at that frequency pair (power_collection/ctx_switch/freq_sweep_power/,
+# analyze_migration_energy.py -> migration_energy_summary.csv).
+#
+# This replaces an earlier idle-subtraction approach (duty-cycled bench +
+# same-core control, see analyze_duty_test.py) that tried to isolate the
+# ~1-10nJ energy of a single migration as a delta against RAPL's ~50ms /
+# ~10-50mW noise floor and produced sign-flipping, order-of-magnitude-unstable
+# results. Using the directly-measured *active* power (O(1-25W), the same
+# convention as P_NRG_J/E_NRG_J's Trans_P95_W × stall_latency) avoids that
+# noise floor entirely, at the cost of including some non-migration-specific
+# background power in the estimate.
+MIG_NRG_J = {
+    (1.0, 1.0): 5.35e-06,  (1.0, 2.0): 8.92e-06,  (1.0, 3.0): 2.139e-05, (1.0, 4.0): 8.909e-05,
+    (2.0, 1.0): 8.93e-06,  (2.0, 2.0): 1.25e-05,  (2.0, 3.0): 2.589e-05, (2.0, 4.0): 9.637e-05,
+    (3.0, 1.0): 1.875e-05, (3.0, 2.0): 2.054e-05, (3.0, 3.0): 2.852e-05, (3.0, 4.0): 0.00010253,
+    (4.0, 1.0): 4.012e-05, (4.0, 2.0): 5.893e-05, (4.0, 3.0): 5.974e-05, (4.0, 4.0): 0.0001061,
+}
 DVFS_LAT_S = 5.0e-6    # fallback for freq pairs not in P_LAT_US/E_LAT_US
 DVFS_NRG_J = 2e-5      # fallback
 
@@ -98,8 +108,22 @@ def get_dvfs_cost(start_cfg, end_cfg):
     nrg_j = nrg_map.get((s_freq, e_freq), DVFS_NRG_J)
     
     lat_s = lat_us * 1e-6
-    
+
     return lat_s, nrg_j
+
+def get_migration_cost(start_cfg, end_cfg):
+    """Calculates Latency (s) and Energy (J) for a P<->E core migration."""
+    s_type, s_freq_str = start_cfg.split('_')
+    e_type, e_freq_str = end_cfg.split('_')
+
+    p_freq_str = s_freq_str if s_type == 'P' else e_freq_str
+    e_freq_str = e_freq_str if s_type == 'P' else s_freq_str
+
+    p_freq = min(float(p_freq_str.replace('GHz', '')), 4.0)
+    e_freq = min(float(e_freq_str.replace('GHz', '')), 4.0)
+
+    nrg_j = MIG_NRG_J.get((p_freq, e_freq), DVFS_NRG_J)
+    return MIG_LAT_S, nrg_j
 
 def build_transition_matrices(configs):
     n = len(configs)
@@ -111,7 +135,7 @@ def build_transition_matrices(configs):
             
             # Cross-cluster Migration Cost
             if configs[i][0] != configs[j][0]:
-                lat_mat[i, j], nrg_mat[i, j] = MIG_LAT_S, MIG_NRG_J
+                lat_mat[i, j], nrg_mat[i, j] = get_migration_cost(configs[i], configs[j])
             # Same-cluster DVFS Cost
             else:
                 lat_s, nrg_j = get_dvfs_cost(configs[i], configs[j])
@@ -119,16 +143,18 @@ def build_transition_matrices(configs):
                     
     return lat_mat, nrg_mat
 
-def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs, power_mode='per_sample'):
-    data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode)
+def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
+                     power_mode='per_sample', model_pred_dir=None):
+    data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode,
+                           model_pred_dir=model_pred_dir)
     if data is None: return None
-    
-    time_mat, energy_mat, proxy_signal, valid_configs, min_len = data
+
+    time_mat, energy_mat, proxy_signal, valid_configs, min_len, model_time_mat = data
     min_len = len(time_mat)
     trans_lat, trans_nrg = build_transition_matrices(configs)
-    
+
     summary_results = []
-    
+
     # Define common arguments for policy calls
     policy_args = (time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg)
     
@@ -160,6 +186,17 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs, pow
             'UCB1_P': dvfs.make_ucb1_dvfs('P')(*policy_args, metric=m_type),
             'Random_P': dvfs.make_random_dvfs('P')(*policy_args, metric=m_type),
         }
+
+        # Model-based P-core DVFS: CatBoost cross-freq predictions as decision input.
+        # Only added when model_time_mat was loaded from model_pred_dir.
+        if model_time_mat is not None:
+            model_policy_args = (*policy_args, model_time_mat)
+            p_traces.update({
+                'Model_Greedy_P':  dvfs.make_model_1_step('P')(*model_policy_args, metric=m_type),
+                'Model_MPC_P_W5':  dvfs.make_model_n_step('P', horizon=5)(*model_policy_args, metric=m_type),
+                'Model_MPC_P_W10': dvfs.make_model_n_step('P', horizon=10)(*model_policy_args, metric=m_type),
+                'Model_Global_P':  dvfs.make_model_global('P')(*model_policy_args, metric=m_type),
+            })
 
         # 2. E-Core DVFS Policies
         e_traces = {
@@ -250,22 +287,27 @@ def main():
     parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
                          help="'per_sample' uses measured per-chunk power (default); "
                               "'baseline' uses the fixed get_power_w lookup table for all configs.")
+    parser.add_argument('--model_pred_dir', type=str, default=None,
+                        help="Directory with precomputed cross-freq model predictions "
+                             "(output of cross_freq_precompute.py). When provided, adds "
+                             "Model_Greedy_P, Model_MPC_P_W5/W10, Model_Global_P policies.")
     args = parser.parse_args()
-    
+
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
+    model_pred_dir = Path(args.model_pred_dir) if args.model_pred_dir else None
     bar_dir, trace_dir = output_path / "bar_plots_mod", output_path / "trace_plots_mod"
     bar_dir.mkdir(parents=True, exist_ok=True); trace_dir.mkdir(parents=True, exist_ok=True)
-    
+
     pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
     configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
-    
+
     print(f"Starting Modular Simulator for {len(pairs)} workloads...")
-    
+
     all_summary = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {executor.submit(process_workload, wl, ph, pairs, input_path, bar_dir, trace_dir, configs, args.power_mode): (wl, ph) for wl, ph in pairs}
+        futures = {executor.submit(process_workload, wl, ph, pairs, input_path, bar_dir, trace_dir, configs, args.power_mode, model_pred_dir): (wl, ph) for wl, ph in pairs}
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res: all_summary.extend(res)

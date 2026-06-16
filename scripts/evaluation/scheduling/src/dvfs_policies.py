@@ -6,7 +6,7 @@
 # decision_policies.py / temporal_policies.py.
 import numpy as np
 
-from decision_policies import make_policy_from_idx_list
+from decision_policies import make_policy_from_idx_list, make_model_policy_from_idx_list
 
 
 def _core_idx_list_fn(core_type):
@@ -322,4 +322,45 @@ def make_random_dvfs(core_type, seed=42):
         window_size=1,
         heuristic_fn=decide,
         initial_state=lambda: {'rng': np.random.default_rng(seed)},
+    )
+
+
+# ==========================================
+# Model-based policies (decision axis: Model)
+# Use cross-freq CatBoost predictions to decide between P-core frequencies.
+# Returned policy takes model_time_mat as an extra positional argument before metric.
+# ==========================================
+
+def _p_model_idx_list_fn():
+    """Restrict action set to P_1.0-4.0GHz (exclude P_5.0GHz and all E-cores)."""
+    def idx_list_fn(configs, valid_configs):
+        from data_loader import P_MODEL_FREQS
+        allowed = {f"P_{f:.1f}GHz" for f in P_MODEL_FREQS}
+        return sorted([configs.index(c) for c in valid_configs if c in allowed])
+    return idx_list_fn
+
+
+def make_model_1_step(core_type='P'):
+    """Model-based Greedy: uses CatBoost cross-freq predictions to pick next freq."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_p_model_idx_list_fn(),
+        decision_mode='greedy',
+        window_size=1,
+    )
+
+
+def make_model_n_step(core_type='P', horizon=5):
+    """Model-based MPC: predicts over a W-chunk horizon then picks first action."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_p_model_idx_list_fn(),
+        decision_mode='mpc',
+        window_size=horizon,
+    )
+
+
+def make_model_global(core_type='P'):
+    """Model-based Global Viterbi: full-trace DP using cross-freq model predictions."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_p_model_idx_list_fn(),
+        decision_mode='global',
     )

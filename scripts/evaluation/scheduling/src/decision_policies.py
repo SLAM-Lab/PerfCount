@@ -122,6 +122,154 @@ def accumulate_trace(time_mat_sub, energy_mat_sub, sub_lat, sub_nrg, actions, me
     return trace
 
 
+P_MODEL_FREQS = [1.0, 2.0, 3.0, 4.0]
+
+
+def _src_freq_idx(configs, idx_list, local_prev_idx):
+    """Map a local action index back to a P_MODEL_FREQS axis index.
+
+    For P-core DVFS, idx_list is [P_1.0, P_2.0, P_3.0, P_4.0] global indices,
+    so local index 0 → 1.0GHz → P_MODEL_FREQS index 0, etc.  Returns 0 if the
+    config is not a model-supported P-core freq (e.g. still on an E-core config).
+    """
+    global_cfg = configs[idx_list[local_prev_idx]]
+    core, freq_str = global_cfg.split('_', 1)
+    if core != 'P':
+        return 0
+    freq = float(freq_str.replace('GHz', ''))
+    if freq not in P_MODEL_FREQS:
+        return 0
+    return P_MODEL_FREQS.index(freq)
+
+
+def decide_model_global(model_sub_t, model_sub_e, sub_lat, sub_nrg, metric):
+    """Full-trace Viterbi where step cost at chunk i depends on the previous state.
+
+    model_sub_t/model_sub_e: shape (n_src, n_chunks, n_actions)
+      model_sub_t[a, i, b] = predicted time for config b at chunk i when the
+      scheduler was last running config a.  For P-core DVFS: n_src == n_actions.
+
+    Returns the full action-index path (local indices).
+    """
+    p = _exp(metric)
+    n_src, n_chunks, n_actions = model_sub_t.shape
+
+    dp_m = np.zeros((n_chunks, n_actions))
+    parent_mat = np.zeros((n_chunks, n_actions), dtype=int)
+
+    # i=0: no previous state; use diagonal (oracle ground-truth) as initial cost
+    for b in range(n_actions):
+        src_for_b = min(b, n_src - 1)
+        dp_m[0, b] = model_sub_e[src_for_b, 0, b] * (model_sub_t[src_for_b, 0, b] ** p)
+
+    idx_arr = np.arange(n_actions)
+    for i in range(1, n_chunks):
+        # step_cost[a, b] = (nrg_trans[a,b] + model_e[a,i,b]) * (lat_trans[a,b] + model_t[a,i,b])^p
+        # model_sub_t[:, i, :] has shape (n_src, n_actions); if n_src==n_actions, index by a directly
+        model_t_i = model_sub_t[:n_actions, i, :]   # (n_actions, n_actions)
+        model_e_i = model_sub_e[:n_actions, i, :]   # (n_actions, n_actions)
+        lat_total = sub_lat + model_t_i              # (n_actions, n_actions)
+        nrg_total = sub_nrg + model_e_i              # (n_actions, n_actions)
+        step_cost = nrg_total * (lat_total ** p)     # (n_actions, n_actions)
+
+        vals = dp_m[i - 1, :][:, None] + step_cost  # (n_actions, n_actions)
+        best_prev = np.argmin(vals, axis=0)
+        dp_m[i, :] = vals[best_prev, idx_arr]
+        parent_mat[i, :] = best_prev
+
+    best_idx = int(np.argmin(dp_m[-1, :]))
+    path = np.zeros(n_chunks, dtype=int)
+    curr = best_idx
+    path[-1] = curr
+    for i in range(n_chunks - 1, 0, -1):
+        curr = parent_mat[i, curr]
+        path[i - 1] = curr
+    return path
+
+
+def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
+                                     window_size=None, start_idx_fn=None):
+    """Factory for model-based policies.
+
+    Returned policy signature:
+        policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
+               trans_lat, trans_nrg, model_time_mat, metric) -> trace
+
+    model_time_mat: ndarray (n_src_freqs, n_chunks, n_configs) — precomputed by
+        data_loader._load_model_time_mat.  model_time_mat[si, i, ci] is the
+        predicted time for config ci at chunk i when the scheduler was observing
+        from P-core source frequency P_MODEL_FREQS[si].
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
+               trans_lat, trans_nrg, model_time_mat, metric):
+        n_chunks = len(time_mat)
+        idx_list = idx_list_fn(configs, valid_configs)
+        if not idx_list:
+            return np.zeros(n_chunks)
+
+        sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
+        sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
+
+        # Extract model sub-tensors for allowed actions
+        # model_sub_t[si, i, li] = predicted time for local config li at chunk i
+        # given observation from freq P_MODEL_FREQS[si]
+        model_sub_t = model_time_mat[:, :n_chunks, :][:, :, idx_list]
+        # model energy: predicted time × per-chunk power derived from oracle
+        oracle_power = np.where(time_mat[:, idx_list] > 1e-12,
+                                energy_mat[:, idx_list] / time_mat[:, idx_list],
+                                1.0)  # (n_chunks, n_actions)
+        model_sub_e = model_sub_t * oracle_power[np.newaxis, :, :]
+
+        if decision_mode == 'global':
+            path = decide_model_global(model_sub_t, model_sub_e, sub_lat, sub_nrg, metric)
+            # Replay with model-predicted times; use oracle_t for the chosen src config
+            oracle_sub_t = time_mat[:, idx_list]
+            oracle_sub_e = energy_mat[:, idx_list]
+            # For replay, use oracle times at the chosen config (model was for decision only)
+            return accumulate_trace(oracle_sub_t, oracle_sub_e, sub_lat, sub_nrg, path, metric)
+
+        start_idx = start_idx_fn(idx_list, valid_configs) if start_idx_fn else len(idx_list) - 1
+        actions = np.zeros(n_chunks, dtype=int)
+        prev_idx = start_idx
+
+        for i in range(n_chunks):
+            si = _src_freq_idx(configs, idx_list, prev_idx)
+            pidx = prev_idx if i > 0 else None
+
+            if decision_mode == 'greedy':
+                # Use model prediction from prev chunk's src freq, at current chunk
+                window_t = model_sub_t[si, i, :][np.newaxis, :]
+                window_e = model_sub_e[si, i, :][np.newaxis, :]
+                if i == 0:
+                    # No prior observation; use diagonal (oracle at current freq)
+                    window_t = model_sub_t[si, i, :][np.newaxis, :]
+                action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+
+            elif decision_mode == 'mpc':
+                W = window_size or 1
+                end = min(i + W, n_chunks)
+                window_t = model_sub_t[si, i:end, :]
+                window_e = model_sub_e[si, i:end, :]
+                if window_t.shape[0] == 0:
+                    action = start_idx
+                elif window_t.shape[0] == 1:
+                    action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+                else:
+                    action = decide_mpc(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+            else:
+                raise ValueError(f"Unknown decision_mode for model policy: {decision_mode}")
+
+            actions[i] = action
+            prev_idx = action
+
+        # Replay with oracle times (model was used only for action selection)
+        oracle_sub_t = time_mat[:, idx_list]
+        oracle_sub_e = energy_mat[:, idx_list]
+        return accumulate_trace(oracle_sub_t, oracle_sub_e, sub_lat, sub_nrg, actions, metric)
+
+    return policy
+
+
 def make_policy_from_idx_list(idx_list_fn, temporal_mode, decision_mode,
                                window_size=None, start_idx_fn=None,
                                heuristic_fn=None, initial_state=None):
