@@ -236,23 +236,22 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
             si = _src_freq_idx(configs, idx_list, prev_idx)
             pidx = prev_idx if i > 0 else None
 
-            if decision_mode == 'greedy':
-                # Use model prediction from prev chunk's src freq, at current chunk
-                window_t = model_sub_t[si, i, :][np.newaxis, :]
-                window_e = model_sub_e[si, i, :][np.newaxis, :]
-                if i == 0:
-                    # No prior observation; use diagonal (oracle at current freq)
-                    window_t = model_sub_t[si, i, :][np.newaxis, :]
+            if i == 0:
+                # No prior PMU data: default to start frequency
+                action = start_idx
+            elif decision_mode == 'greedy':
+                # Reactive: predict chunk i's performance from chunk i-1's PMU counters
+                window_t = model_sub_t[si, i - 1, :][np.newaxis, :]
+                window_e = model_sub_e[si, i - 1, :][np.newaxis, :]
                 action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
 
             elif decision_mode == 'mpc':
+                # Reactive MPC: best estimate for next W chunks is prior chunk's behavior
                 W = window_size or 1
-                end = min(i + W, n_chunks)
-                window_t = model_sub_t[si, i:end, :]
-                window_e = model_sub_e[si, i:end, :]
-                if window_t.shape[0] == 0:
-                    action = start_idx
-                elif window_t.shape[0] == 1:
+                n_future = min(W, n_chunks - i)
+                window_t = np.tile(model_sub_t[si, i - 1, :], (n_future, 1))
+                window_e = np.tile(model_sub_e[si, i - 1, :], (n_future, 1))
+                if n_future == 1:
                     action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
                 else:
                     action = decide_mpc(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
@@ -340,7 +339,9 @@ def make_policy_from_idx_list(idx_list_fn, temporal_mode, decision_mode,
             else:
                 if temporal_mode == 'reactive':
                     window_t, window_e = temporal.reactive_window_raw(sub_t, sub_e, i, window_size)
-                else:
+                elif temporal_mode == 'reactive_oracle':
+                    window_t, window_e = temporal.reactive_oracle_window_raw(sub_t, sub_e, i)
+                else:  # 'oracle' — perfect future: sees chunk i's true data
                     window_t, window_e = temporal.oracle_window_raw(sub_t, sub_e, i, window_size)
 
                 if window_t.shape[0] == 0:

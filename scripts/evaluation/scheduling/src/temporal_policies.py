@@ -23,6 +23,18 @@ def oracle_window_raw(time_mat, energy_mat, i, window_size):
     return time_mat[i:i + window_len, :], energy_mat[i:i + window_len, :]
 
 
+def reactive_oracle_window_raw(time_mat, energy_mat, i):
+    """Prior chunk's TRUE timings used to decide chunk i.
+
+    'Reactive oracle': perfect knowledge of what each config achieved at
+    chunk i-1, but cannot see chunk i before running it.  Returns empty
+    arrays at i==0 (no prior chunk exists yet).
+    """
+    if i == 0:
+        return time_mat[0:0, :], energy_mat[0:0, :]
+    return time_mat[i - 1:i, :], energy_mat[i - 1:i, :]
+
+
 def reactive_signal_window(proxy_signal, i, window_size):
     """Past `window_size` proxy-signal values (exclusive of chunk i).
 

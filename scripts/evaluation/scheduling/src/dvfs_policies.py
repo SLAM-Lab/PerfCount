@@ -61,6 +61,20 @@ def make_proactive_1_step(core_type):
 
 
 # ==========================================
+# 4. REACTIVE ORACLE (Greedy, Reactive-Oracle)
+# Uses prior chunk's TRUE timings to decide current chunk's frequency.
+# Perfect knowledge of the past; no knowledge of the future.
+# ==========================================
+def make_reactive_oracle(core_type):
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive_oracle',
+        decision_mode='greedy',
+        window_size=1,
+    )
+
+
+# ==========================================
 # 4. GLOBAL PROACTIVE ORACLE (Global, Oracle)
 # ==========================================
 def make_global_viterbi(core_type):

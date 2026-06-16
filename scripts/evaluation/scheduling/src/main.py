@@ -143,7 +143,7 @@ def build_transition_matrices(configs):
                     
     return lat_mat, nrg_mat
 
-def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
+def process_workload(wl, ph, pairs, input_path, configs,
                      power_mode='per_sample', model_pred_dir=None):
     data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode,
                            model_pred_dir=model_pred_dir)
@@ -168,9 +168,9 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
             'Static_P_2.0GHz': dvfs.make_static('P_2.0GHz')(*policy_args, metric=m_type),
             'Static_P_3.0GHz': dvfs.make_static('P_3.0GHz')(*policy_args, metric=m_type),
             'Static_P_4.0GHz': dvfs.make_static('P_4.0GHz')(*policy_args, metric=m_type),
-            # Reactive: uses only past chunk data (causal, practical)
-            'Reactive_1_Step_P': dvfs.make_reactive_1_step('P')(*policy_args, metric=m_type),
-            # Oracle policies: have access to current/future timing data (not practically deployable)
+            # Reactive oracle: prior chunk's TRUE timings to decide current chunk (causal)
+            'Reactive_Oracle_P': dvfs.make_reactive_oracle('P')(*policy_args, metric=m_type),
+            # Perfect-future oracle policies: see current/future chunk data (not deployable)
             'Greedy_Oracle_P': dvfs.make_proactive_1_step('P')(*policy_args, metric=m_type),
             'MPC_Oracle_P_W5': dvfs.make_proactive_n_step('P', horizon=5)(*policy_args, metric=m_type),
             'MPC_Oracle_P_W10': dvfs.make_proactive_n_step('P', horizon=10)(*policy_args, metric=m_type),
@@ -192,10 +192,8 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
         if model_time_mat is not None:
             model_policy_args = (*policy_args, model_time_mat)
             p_traces.update({
-                'Model_Greedy_P':  dvfs.make_model_1_step('P')(*model_policy_args, metric=m_type),
-                'Model_MPC_P_W5':  dvfs.make_model_n_step('P', horizon=5)(*model_policy_args, metric=m_type),
-                'Model_MPC_P_W10': dvfs.make_model_n_step('P', horizon=10)(*model_policy_args, metric=m_type),
-                'Model_Global_P':  dvfs.make_model_global('P')(*model_policy_args, metric=m_type),
+                'Model_Greedy_P': dvfs.make_model_1_step('P')(*model_policy_args, metric=m_type),
+                'Model_Global_P': dvfs.make_model_global('P')(*model_policy_args, metric=m_type),
             })
 
         # 2. E-Core DVFS Policies
@@ -205,9 +203,9 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
             'Static_E_2.0GHz': dvfs.make_static('E_2.0GHz')(*policy_args, metric=m_type),
             'Static_E_3.0GHz': dvfs.make_static('E_3.0GHz')(*policy_args, metric=m_type),
             'Static_E_4.0GHz': dvfs.make_static('E_4.0GHz')(*policy_args, metric=m_type),
-            # Reactive: uses only past chunk data (causal, practical)
-            'Reactive_1_Step_E': dvfs.make_reactive_1_step('E')(*policy_args, metric=m_type),
-            # Oracle policies: have access to current/future timing data (not practically deployable)
+            # Reactive oracle: prior chunk's TRUE timings to decide current chunk (causal)
+            'Reactive_Oracle_E': dvfs.make_reactive_oracle('E')(*policy_args, metric=m_type),
+            # Perfect-future oracle policies: see current/future chunk data (not deployable)
             'Greedy_Oracle_E': dvfs.make_proactive_1_step('E')(*policy_args, metric=m_type),
             'MPC_Oracle_E_W5': dvfs.make_proactive_n_step('E', horizon=5)(*policy_args, metric=m_type),
             'MPC_Oracle_E_W10': dvfs.make_proactive_n_step('E', horizon=10)(*policy_args, metric=m_type),
@@ -270,14 +268,6 @@ def process_workload(wl, ph, pairs, input_path, bar_dir, trace_dir, configs,
             if len(tr) > 0:
                 summary_results.append({'Workload': wl, 'Phase': ph, 'Metric': m_type, 'Policy': name, 'Final_Value': tr[-1]})
         
-        # Generate Modular Plots
-        dvfs_traces = {**p_traces, **e_traces} # Combine them so they output to the same DVFS file
-        # Generate Modular Plots (Separated cleanly to prevent dict overwriting)
-        plotter.generate_phase_plots(wl, ph, m_type, p_traces, min_len, bar_dir, trace_dir, "PDVFS")
-        plotter.generate_phase_plots(wl, ph, m_type, e_traces, min_len, bar_dir, trace_dir, "EDVFS")
-        plotter.generate_phase_plots(wl, ph, m_type, hetero_traces, min_len, bar_dir, trace_dir, "HETERO")
-        plotter.generate_phase_plots(wl, ph, m_type, combined_traces, min_len, bar_dir, trace_dir, "COMBINED")
-    
     return summary_results
 
 def main():
@@ -293,32 +283,39 @@ def main():
                              "Model_Greedy_P, Model_MPC_P_W5/W10, Model_Global_P policies.")
     args = parser.parse_args()
 
+    import pandas as pd
+
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
     model_pred_dir = Path(args.model_pred_dir) if args.model_pred_dir else None
-    bar_dir, trace_dir = output_path / "bar_plots_mod", output_path / "trace_plots_mod"
-    bar_dir.mkdir(parents=True, exist_ok=True); trace_dir.mkdir(parents=True, exist_ok=True)
 
     pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
     configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
 
-    print(f"Starting Modular Simulator for {len(pairs)} workloads...")
+    print(f"Starting Modular Simulator for {len(pairs)} workload-phases...")
 
     all_summary = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
-        futures = {executor.submit(process_workload, wl, ph, pairs, input_path, bar_dir, trace_dir, configs, args.power_mode, model_pred_dir): (wl, ph) for wl, ph in pairs}
+        futures = {
+            executor.submit(
+                process_workload, wl, ph, pairs, input_path, configs,
+                args.power_mode, model_pred_dir
+            ): (wl, ph)
+            for wl, ph in pairs
+        }
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
-            if res: all_summary.extend(res)
-            
+            if res:
+                all_summary.extend(res)
+
     if all_summary:
-        import pandas as pd
         df = pd.DataFrame(all_summary)
-        df.to_csv(output_path / "all_phases_summary.csv", index=False)
-        print(f"\\nSaved aggregated summary to {output_path / 'all_phases_summary.csv'}")
+        print(f"\nSimulation complete. Generating plots and CSVs...")
+        plotter.generate_all_plots(df, output_path)
     else:
-        print("\\nNo valid data processed.")
+        print("\nNo valid data processed.")
 
 if __name__ == "__main__":
     main()
