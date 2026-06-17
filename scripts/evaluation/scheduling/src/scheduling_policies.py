@@ -5,7 +5,9 @@
 # decision_policies.make_policy_from_idx_list.
 import numpy as np
 
-from decision_policies import make_policy_from_idx_list
+from decision_policies import (make_policy_from_idx_list,
+                               make_model_policy_from_idx_list, _src_cfg_idx)
+from data_loader import ALL_MODEL_CONFIGS
 
 
 def _full_idx_list_fn(configs, valid_configs):
@@ -23,6 +25,31 @@ def _p_max_start_idx(idx_list, valid_configs):
     return _last_core_local_idx(valid_configs, 'P')
 
 
+def _norm_proxy(ctx):
+    return np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+
+def _ewma_step(raw_util, prev_ewma, alpha):
+    return alpha * raw_util + (1.0 - alpha) * prev_ewma
+
+def _freq_select(idx_list, target_ratio):
+    n = len(idx_list)
+    level = int(np.clip(np.round(target_ratio * (n - 1)), 0, n - 1))
+    return idx_list[level]
+
+def _perf_feasible(ctx, perf_slack, p_max_local):
+    limit = ctx['prev_t'][p_max_local] * (1.0 + perf_slack)
+    n = ctx['sub_t'].shape[1]
+    return [j for j in range(n) if ctx['prev_t'][j] <= limit]
+
+def _ensure_pe_indices(state, ctx):
+    if 'p_idx' not in state:
+        valid = ctx['valid_configs']
+        state = dict(state)
+        state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
+        state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
+    return state
+
+
 # ==========================================
 # GLOBAL HETERO ORACLE (Global, Oracle, full P+E x freq grid)
 # ==========================================
@@ -34,6 +61,8 @@ def run_proactive_hetero_oracle(time_mat, energy_mat, proxy_signal, configs, val
         decision_mode='global',
     )
     return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+
+run_proactive_hetero_oracle.is_viterbi_oracle = True
 
 
 # ==========================================
@@ -71,6 +100,7 @@ def run_micro_eas(time_mat, energy_mat, proxy_signal, configs, valid_configs, tr
         window_size=1,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=_decide_heuristic_micro_eas,
+        metric_independent=True,
     )
     return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
 
@@ -135,29 +165,13 @@ def make_eas_hetero(alpha=0.25, perf_slack=0.10):
     Ref: Quentin Perret et al., "An Energy Model for the Linux Kernel" (ELC 2018).
     """
     def decide(ctx, state):
-        if 'p_idx' not in state:
-            valid = ctx['valid_configs']
-            state = dict(state)
-            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
-            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
-
+        state = _ensure_pe_indices(state, ctx)
         if ctx['i'] == 0:
             return ctx['start_idx'], state
-
-        p_idx, e_idx = state['p_idx'], state['e_idx']
-        n = ctx['sub_t'].shape[1]
-        util_ewma = state.get('util_ewma', 1.0)
-        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
-        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
-
-        p_max = p_idx[-1]
-        perf_limit = ctx['prev_t'][p_max] * (1.0 + perf_slack)
-        feasible = [c for c in range(n) if ctx['prev_t'][c] <= perf_limit]
-        if not feasible:
-            feasible = p_idx
-
+        p_idx = state['p_idx']
+        util_ewma = _ewma_step(_norm_proxy(ctx), state.get('util_ewma', 1.0), alpha)
+        feasible = _perf_feasible(ctx, perf_slack, p_idx[-1]) or p_idx
         action = min(feasible, key=lambda c: ctx['prev_e'][c])
-
         state = dict(state)
         state['util_ewma'] = util_ewma
         return action, state
@@ -169,6 +183,7 @@ def make_eas_hetero(alpha=0.25, perf_slack=0.10):
         window_size=1,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
@@ -186,28 +201,16 @@ def make_threshold_migration(up_thresh=0.60, down_thresh=0.30, alpha=0.25):
          ARM GTS (Global Task Scheduling) white paper.
     """
     def decide(ctx, state):
-        if 'p_max' not in state:
-            valid = ctx['valid_configs']
-            state = dict(state)
-            state['p_max'] = _last_core_local_idx(valid, 'P')
-            state['e_max'] = _last_core_local_idx(valid, 'E')
-
+        state = _ensure_pe_indices(state, ctx)
         if ctx['i'] == 0:
             return ctx['start_idx'], state
-
-        p_max, e_max = state['p_max'], state['e_max']
         on_p_core = state.get('on_p_core', True)
-        util_ewma = state.get('util_ewma', 1.0)
-        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
-        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
-
+        util_ewma = _ewma_step(_norm_proxy(ctx), state.get('util_ewma', 1.0), alpha)
         if on_p_core and util_ewma < down_thresh:
             on_p_core = False
         elif not on_p_core and util_ewma > up_thresh:
             on_p_core = True
-
-        action = p_max if on_p_core else e_max
-
+        action = state['p_idx'][-1] if on_p_core else state['e_idx'][-1]
         state = dict(state)
         state['on_p_core'] = on_p_core
         state['util_ewma'] = util_ewma
@@ -220,6 +223,7 @@ def make_threshold_migration(up_thresh=0.60, down_thresh=0.30, alpha=0.25):
         window_size=1,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
@@ -236,32 +240,15 @@ def make_eas_with_dvfs(alpha=0.25, headroom=1.25, perf_slack=0.10):
     Ref: Linux kernel v5.0+ EAS + schedutil interaction documentation.
     """
     def decide(ctx, state):
-        if 'p_idx' not in state:
-            valid = ctx['valid_configs']
-            state = dict(state)
-            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
-            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
-
+        state = _ensure_pe_indices(state, ctx)
         if ctx['i'] == 0:
             return ctx['start_idx'], state
-
         p_idx, e_idx = state['p_idx'], state['e_idx']
-        util_ewma = state.get('util_ewma', 1.0)
-        raw_util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
-        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        util_ewma = _ewma_step(_norm_proxy(ctx), state.get('util_ewma', 1.0), alpha)
         target_ratio = min(util_ewma * headroom, 1.0)
-
-        p_max = p_idx[-1]
-        perf_limit = ctx['prev_t'][p_max] * (1.0 + perf_slack)
+        perf_limit = ctx['prev_t'][p_idx[-1]] * (1.0 + perf_slack)
         e_feasible = sorted([c for c in e_idx if ctx['prev_t'][c] <= perf_limit])
-
-        if e_feasible:
-            level = int(np.round(target_ratio * (len(e_feasible) - 1)))
-            action = e_feasible[np.clip(level, 0, len(e_feasible) - 1)]
-        else:
-            level = int(np.round(target_ratio * (len(p_idx) - 1)))
-            action = p_idx[np.clip(level, 0, len(p_idx) - 1)]
-
+        action = _freq_select(e_feasible, target_ratio) if e_feasible else _freq_select(p_idx, target_ratio)
         state = dict(state)
         state['util_ewma'] = util_ewma
         return action, state
@@ -273,6 +260,7 @@ def make_eas_with_dvfs(alpha=0.25, headroom=1.25, perf_slack=0.10):
         window_size=1,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
@@ -291,32 +279,14 @@ def make_thread_director(window=5, compute_thresh=0.60, alpha=0.25, headroom=1.2
          Intel Alder Lake Architecture (2021).
     """
     def decide(ctx, state):
-        if 'p_idx' not in state:
-            valid = ctx['valid_configs']
-            state = dict(state)
-            state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
-            state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
-
+        state = _ensure_pe_indices(state, ctx)
         if ctx['i'] == 0:
             return ctx['start_idx'], state
-
         p_idx, e_idx = state['p_idx'], state['e_idx']
-        proxy_window = ctx['proxy_window']
-        avg_proxy = np.mean(proxy_window)
-        compute_score = np.clip((avg_proxy - 1.0) / 2.5, 0.0, 1.0)
-
-        raw_util = np.clip((proxy_window[-1] - 1.0) / 2.5, 0.0, 1.0)
-        util_ewma = state.get('util_ewma', 1.0)
-        util_ewma = alpha * raw_util + (1.0 - alpha) * util_ewma
+        compute_score = np.clip((np.mean(ctx['proxy_window']) - 1.0) / 2.5, 0.0, 1.0)
+        util_ewma = _ewma_step(_norm_proxy(ctx), state.get('util_ewma', 1.0), alpha)
         target_ratio = min(util_ewma * headroom, 1.0)
-
-        if compute_score >= compute_thresh:
-            level = int(np.round(target_ratio * (len(p_idx) - 1)))
-            action = p_idx[np.clip(level, 0, len(p_idx) - 1)]
-        else:
-            level = int(np.round(target_ratio * (len(e_idx) - 1)))
-            action = e_idx[np.clip(level, 0, len(e_idx) - 1)]
-
+        action = _freq_select(p_idx if compute_score >= compute_thresh else e_idx, target_ratio)
         state = dict(state)
         state['util_ewma'] = util_ewma
         return action, state
@@ -328,6 +298,7 @@ def make_thread_director(window=5, compute_thresh=0.60, alpha=0.25, headroom=1.2
         window_size=window,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
@@ -382,4 +353,221 @@ def make_ucb1_hetero(c=1.0):
         window_size=1,
         start_idx_fn=_p_max_start_idx,
         heuristic_fn=decide,
+    )
+
+
+# ==========================================
+# ISO-FREQ MODEL (Reactive, Model, P↔E cross-proc CatBoost)
+# Decides between P-core and E-core at a fixed frequency using cross-processor
+# CatBoost models trained on P↔E migrations.  Only the prior chunk's PMU data
+# (captured at the current source config) drives the decision.
+# ==========================================
+def make_isofreq_model(target_freq):
+    """Cross-proc model policy: picks P or E at target_freq using CatBoost.
+
+    Returned policy signature (note extra cross_proc_time_mat arg):
+        policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
+               trans_lat, trans_nrg, cross_proc_time_mat, metric) -> trace
+
+    cross_proc_time_mat: ndarray (8, n_chunks, n_configs) from
+        data_loader._load_cross_proc_time_mat; axis 0 follows ALL_MODEL_CONFIGS.
+    """
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        # In our configs list E-cores precede P-cores, so sorted idx_list puts
+        # P-core last.  Fall back to the last index if only one config exists.
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='greedy',
+        temporal='reactive',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+    )
+
+
+# ==========================================
+# REACTIVE ORACLE (fixed freq): prior chunk TRUE timing to pick P vs E
+# ==========================================
+def make_reactive_oracle_fixed_freq(target_freq):
+    """Reactive oracle at fixed frequency: prior chunk's TRUE timing → P or E."""
+    return make_policy_from_idx_list(
+        idx_list_fn=_fixed_freq_idx_list_fn(target_freq),
+        temporal_mode='reactive_oracle',
+        decision_mode='greedy',
+        window_size=1,
+        start_idx_fn=_fixed_freq_start_idx_fn(target_freq),
+    )
+
+
+# ==========================================
+# ISOFREQ MODEL ORACLE: current chunk PMU → P vs E (perfect-future model)
+# ==========================================
+def make_isofreq_model_oracle(target_freq):
+    """Cross-proc model with oracle temporal: current chunk PMU → P or E."""
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+    )
+
+
+# ==========================================
+# ISOFREQ ORACLE HEURISTIC: EAS-style with current chunk's TRUE timing
+# ==========================================
+def make_isofreq_oracle_heuristic(target_freq, perf_slack=0.10):
+    """Oracle-signal EAS at fixed freq: uses current chunk's true timing+energy."""
+    def decide(ctx, state):
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        # Fixed-freq subset: local 0=E, 1=P (sorted by global config idx, E<P)
+        e_local, p_local = 0, 1
+        p_time = ctx['prev_t'][p_local]
+        e_time = ctx['prev_t'][e_local]
+        if e_time <= p_time * (1.0 + perf_slack):
+            action = e_local if ctx['prev_e'][e_local] <= ctx['prev_e'][p_local] else p_local
+        else:
+            action = p_local
+        return action, state
+
+    def batch(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
+        # oracle_heuristic: prev_t/prev_e = sub_t[i, :] / sub_e[i, :]
+        e_l, p_l = 0, 1  # E-core is local index 0, P-core is 1 (configs sorted E < P)
+        e_ok = sub_t[:, e_l] <= sub_t[:, p_l] * (1.0 + perf_slack)
+        e_cheap = sub_e[:, e_l] <= sub_e[:, p_l]
+        acts = np.where(e_ok & e_cheap, e_l, p_l).astype(int)
+        acts[0] = start_idx
+        return acts
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_fixed_freq_idx_list_fn(target_freq),
+        temporal_mode='oracle_heuristic',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_fixed_freq_start_idx_fn(target_freq),
+        heuristic_fn=decide,
+        metric_independent=True,
+        batch_decide_fn=batch,
+    )
+
+
+# ==========================================
+# GREEDY ORACLE HETERO: perfect-future greedy across full P+E space
+# ==========================================
+def make_greedy_oracle_hetero():
+    """Perfect-future 1-step greedy across the full P+E x freq grid."""
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='oracle',
+        decision_mode='greedy',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+    )
+
+
+# ==========================================
+# HETERO MODEL REACTIVE/ORACLE: full P+E space via CatBoost full_model_time_mat
+# full_model_time_mat: (8, n_chunks, n_configs) combining cross-freq P->P +
+# cross-proc P<->E predictions. Passed as model_time_mat positional arg.
+# ==========================================
+def make_hetero_model_reactive():
+    """Full P+E model reactive: prior chunk PMU → best config via CatBoost."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='reactive',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+    )
+
+
+def make_hetero_model_oracle():
+    """Full P+E model oracle: current chunk PMU → best config via CatBoost."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+    )
+
+
+# ==========================================
+# ORACLE HEURISTICS (Hetero): EAS / Thread Director with current chunk's TRUE data
+# ==========================================
+def make_eas_oracle(alpha=0.25, perf_slack=0.10):
+    """Oracle-signal EAS: full P+E space, current chunk's true timing+energy."""
+    def decide(ctx, state):
+        state = _ensure_pe_indices(state, ctx)
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        p_idx = state['p_idx']
+        feasible = _perf_feasible(ctx, perf_slack, p_idx[-1]) or p_idx
+        action = min(feasible, key=lambda c: ctx['prev_e'][c])
+        state = dict(state)
+        return action, state
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='oracle_heuristic',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+        metric_independent=True,
+    )
+
+
+def make_thread_director_oracle(compute_thresh=0.60, headroom=1.25):
+    """Oracle-signal Thread Director: current chunk's proxy + timing."""
+    def decide(ctx, state):
+        state = _ensure_pe_indices(state, ctx)
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        p_idx, e_idx = state['p_idx'], state['e_idx']
+        compute_score = _norm_proxy(ctx)
+        target_ratio = min(compute_score * headroom, 1.0)
+        action = _freq_select(p_idx if compute_score >= compute_thresh else e_idx, target_ratio)
+        state = dict(state)
+        return action, state
+
+    def batch(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
+        # oracle_heuristic: proxy_window[-1] = proxy_signal[i] for each chunk i
+        p_idx = np.array([k for k, c in enumerate(vc) if c.startswith('P')])
+        e_idx = np.array([k for k, c in enumerate(vc) if c.startswith('E')])
+        score = np.clip((proxy - 1.0) / 2.5, 0.0, 1.0)
+        ratio = np.minimum(score * headroom, 1.0)
+        n_p, n_e = len(p_idx), len(e_idx)
+        p_lvl = np.clip(np.round(ratio * (n_p - 1)), 0, n_p - 1).astype(int)
+        e_lvl = np.clip(np.round(ratio * (n_e - 1)), 0, n_e - 1).astype(int)
+        acts = np.where(score >= compute_thresh, p_idx[p_lvl], e_idx[e_lvl]).astype(int)
+        acts[0] = start_idx
+        return acts
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='oracle_heuristic',
+        decision_mode='heuristic',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+        heuristic_fn=decide,
+        metric_independent=True,
+        batch_decide_fn=batch,
     )

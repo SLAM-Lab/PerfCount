@@ -85,17 +85,6 @@ def make_global_viterbi(core_type):
     )
 
 
-# ==========================================
-# PROACTIVE N-STEP MPC (MPC, Oracle)
-# ==========================================
-def make_proactive_n_step(core_type, horizon):
-    return make_policy_from_idx_list(
-        idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='oracle',
-        decision_mode='mpc',
-        window_size=horizon,
-    )
-
 
 # ==========================================
 # 5. LINUX PERFORMANCE GOVERNOR (Heuristic, Reactive)
@@ -105,16 +94,21 @@ def _decide_heuristic_performance_governor(ctx, state):
     return n - 1, state
 
 
-def run_performance_governor(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+def _batch_perf_gov(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
+    return np.full(n, sub_t.shape[1] - 1, dtype=int)
+
+
+def make_performance_governor(core_type='P'):
     """Linux 'performance' CPUfreq governor: always pins to maximum frequency."""
-    policy = make_policy_from_idx_list(
-        idx_list_fn=_core_idx_list_fn('P'),
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
         temporal_mode='reactive',
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=_decide_heuristic_performance_governor,
+        metric_independent=True,
+        batch_decide_fn=_batch_perf_gov,
     )
-    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
 
 
 # ==========================================
@@ -130,21 +124,39 @@ def _decide_heuristic_intel_hwp(ctx, state):
     return hwp_target, state
 
 
-def run_intel_hwp(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
-    policy = make_policy_from_idx_list(
-        idx_list_fn=_core_idx_list_fn('P'),
-        temporal_mode='reactive',
+def _make_batch_intel_hwp(temporal_mode):
+    def batch(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
+        n_cfg = sub_t.shape[1]
+        if temporal_mode == 'oracle_heuristic':
+            # chunk i sees proxy_signal[i]; i=0 still returns start_idx per heuristic_fn
+            acts = (np.clip((proxy - 1.0) / 2.5, 0.0, 1.0) * (n_cfg - 1)).astype(int)
+        else:
+            # reactive: chunk i sees proxy_signal[i-1]; i=0 → start_idx
+            acts = np.empty(n, dtype=int)
+            if n > 1:
+                acts[1:] = (np.clip((proxy[:-1] - 1.0) / 2.5, 0.0, 1.0) * (n_cfg - 1)).astype(int)
+        acts[0] = start_idx
+        return acts
+    return batch
+
+
+def make_intel_hwp(core_type='P', temporal_mode='reactive'):
+    """Intel HWP governor: maps proxy utilization linearly to frequency level."""
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=_decide_heuristic_intel_hwp,
+        metric_independent=True,
+        batch_decide_fn=_make_batch_intel_hwp(temporal_mode),
     )
-    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
 
 
 # ==========================================
 # 7. LINUX ONDEMAND GOVERNOR (Heuristic, Reactive)
 # ==========================================
-def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20):
+def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20, temporal_mode='reactive'):
     """
     Linux 'ondemand' CPUfreq governor (Pallipadi & Starikovskiy, OLS 2006).
     Jumps to max frequency when normalized proxy utilization exceeds up_thresh;
@@ -164,17 +176,18 @@ def make_ondemand(core_type, up_thresh=0.80, down_thresh=0.20):
 
     return make_policy_from_idx_list(
         idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
 # ==========================================
 # 8. LINUX CONSERVATIVE GOVERNOR (Heuristic, Reactive)
 # ==========================================
-def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20):
+def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20, temporal_mode='reactive'):
     """
     Linux 'conservative' CPUfreq governor.
     Steps frequency up or down by exactly one level per interval, avoiding the
@@ -195,17 +208,18 @@ def make_conservative(core_type, up_thresh=0.80, down_thresh=0.20):
 
     return make_policy_from_idx_list(
         idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
 # ==========================================
 # 9. LINUX SCHEDUTIL (PELT-Based) (Heuristic, Reactive)
 # ==========================================
-def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25):
+def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25, temporal_mode='reactive'):
     """
     Linux 'schedutil' governor with PELT-style EWMA utilization tracking
     (Linux kernel v4.7+; Rafał Miłecki, Viresh Kumar, Rafael Wysocki).
@@ -226,17 +240,18 @@ def make_schedutil_pelt(core_type, alpha=0.25, headroom=1.25):
 
     return make_policy_from_idx_list(
         idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
 # ==========================================
 # 10. EWMA PREDICTOR (Weiser et al., 1994) (Heuristic, Reactive)
 # ==========================================
-def make_ewma_dvfs(core_type, alpha=0.5):
+def make_ewma_dvfs(core_type, alpha=0.5, temporal_mode='reactive'):
     """
     EWMA-based DVFS from Weiser et al., "Scheduling for Reduced CPU Energy" (OSDI 1994).
     Predicts next-interval utilization via exponentially weighted moving average of the
@@ -255,17 +270,18 @@ def make_ewma_dvfs(core_type, alpha=0.5):
 
     return make_policy_from_idx_list(
         idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=decide,
+        metric_independent=True,
     )
 
 
 # ==========================================
 # 11. UCB1 ONLINE BANDIT DVFS (Heuristic, Reactive)
 # ==========================================
-def make_ucb1_dvfs(core_type, c=1.0):
+def make_ucb1_dvfs(core_type, c=1.0, temporal_mode='reactive'):
     """
     UCB1 multi-armed bandit DVFS (Auer et al., Machine Learning 2002).
     Treats each available frequency as a bandit arm; reward is the negative
@@ -308,35 +324,12 @@ def make_ucb1_dvfs(core_type, c=1.0):
 
     return make_policy_from_idx_list(
         idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
+        temporal_mode=temporal_mode,
         decision_mode='heuristic',
         window_size=1,
         heuristic_fn=decide,
     )
 
-
-# ==========================================
-# 12. RANDOM POLICY (Lower Bound) (Heuristic, Reactive)
-# ==========================================
-def make_random_dvfs(core_type, seed=42):
-    """
-    Random frequency selection within the specified core cluster.
-    Serves as a lower bound for online learning policies (UCB1, EWMA).
-    A fixed seed ensures reproducibility across workloads and metric types.
-    """
-    def decide(ctx, state):
-        n = ctx['sub_t'].shape[1]
-        rng = state['rng']
-        return int(rng.integers(n)), state
-
-    return make_policy_from_idx_list(
-        idx_list_fn=_core_idx_list_fn(core_type),
-        temporal_mode='reactive',
-        decision_mode='heuristic',
-        window_size=1,
-        heuristic_fn=decide,
-        initial_state=lambda: {'rng': np.random.default_rng(seed)},
-    )
 
 
 # ==========================================
@@ -354,19 +347,43 @@ def _p_model_idx_list_fn():
     return idx_list_fn
 
 
+def _e_model_idx_list_fn():
+    """Restrict action set to E_1.0-4.0GHz."""
+    def idx_list_fn(configs, valid_configs):
+        from data_loader import E_MODEL_FREQS
+        allowed = {f"E_{f:.1f}GHz" for f in E_MODEL_FREQS}
+        return sorted([configs.index(c) for c in valid_configs if c in allowed])
+    return idx_list_fn
+
+
+def _model_idx_list_fn(core_type):
+    return _e_model_idx_list_fn() if core_type == 'E' else _p_model_idx_list_fn()
+
+
 def make_model_1_step(core_type='P'):
-    """Model-based Greedy: uses CatBoost cross-freq predictions to pick next freq."""
+    """Model-based Greedy (reactive): uses prior chunk's CatBoost predictions."""
     return make_model_policy_from_idx_list(
-        idx_list_fn=_p_model_idx_list_fn(),
+        idx_list_fn=_model_idx_list_fn(core_type),
         decision_mode='greedy',
         window_size=1,
+        temporal='reactive',
+    )
+
+
+def make_model_1_step_oracle(core_type='P'):
+    """Model-based Greedy (perfect-future): uses current chunk's CatBoost predictions."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='oracle',
     )
 
 
 def make_model_n_step(core_type='P', horizon=5):
     """Model-based MPC: predicts over a W-chunk horizon then picks first action."""
     return make_model_policy_from_idx_list(
-        idx_list_fn=_p_model_idx_list_fn(),
+        idx_list_fn=_model_idx_list_fn(core_type),
         decision_mode='mpc',
         window_size=horizon,
     )
@@ -375,6 +392,8 @@ def make_model_n_step(core_type='P', horizon=5):
 def make_model_global(core_type='P'):
     """Model-based Global Viterbi: full-trace DP using cross-freq model predictions."""
     return make_model_policy_from_idx_list(
-        idx_list_fn=_p_model_idx_list_fn(),
+        idx_list_fn=_model_idx_list_fn(core_type),
         decision_mode='global',
     )
+
+

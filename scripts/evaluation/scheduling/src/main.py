@@ -1,4 +1,5 @@
 import argparse
+import json
 import re
 import numpy as np
 from pathlib import Path
@@ -6,11 +7,31 @@ import concurrent.futures
 
 # Direct local imports (since they are in the same folder as main.py)
 from data_loader import load_phase_data
+from decision_policies import compute_trace_stats
 import dvfs_policies as dvfs
 import scheduling_policies as sched
 import plotter
 import combined_policies as comb
 import warmup_model
+
+
+def _call_with_stats(policy_fn, *args, **kwargs):
+    """Call a policy, returning (trace, stats_dict | None)."""
+    if getattr(policy_fn, 'returns_actions', False):
+        trace, actions, local_names = policy_fn(*args, _return_actions=True, **kwargs)
+        return trace, compute_trace_stats(list(actions), local_names)
+    return policy_fn(*args, **kwargs), None
+
+
+def _record_diag(diag_results, wl, ph, m_type, name, st):
+    if st is None:
+        return
+    diag_results.append({
+        'Workload': wl, 'Phase': ph, 'Metric': m_type, 'Policy': name,
+        **{k: v for k, v in st.items() if not k.startswith('frac_')},
+        'config_fracs': json.dumps({k[5:]: round(v, 4)
+                                     for k, v in st.items() if k.startswith('frac_')}),
+    })
 
 # ==========================================
 # GLOBAL HARDWARE DEFINES
@@ -144,131 +165,199 @@ def build_transition_matrices(configs):
     return lat_mat, nrg_mat
 
 def process_workload(wl, ph, pairs, input_path, configs,
-                     power_mode='per_sample', model_pred_dir=None):
+                     power_mode='per_sample', cross_freq_pred_dir=None,
+                     cross_freq_e_pred_dir=None, cross_proc_pred_dir=None,
+                     viterbi_cache_dir=None):
     data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode,
-                           model_pred_dir=model_pred_dir)
+                           model_pred_dir=cross_freq_pred_dir,
+                           e_model_pred_dir=cross_freq_e_pred_dir,
+                           cross_proc_pred_dir=cross_proc_pred_dir)
     if data is None: return None
 
-    time_mat, energy_mat, proxy_signal, valid_configs, min_len, model_time_mat = data
+    time_mat, energy_mat, proxy_signal, valid_configs, min_len, model_time_mat, e_model_time_mat, cross_proc_time_mat, full_model_time_mat = data
     min_len = len(time_mat)
     trans_lat, trans_nrg = build_transition_matrices(configs)
 
     summary_results = []
+    diag_results = []
 
     # Define common arguments for policy calls
     policy_args = (time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg)
-    
-    metrics = ['EDP', 'ED2P']
-    for m_type in metrics:
-        
-        # 1. P-Core DVFS Policies
-        p_traces = {
-            # Baselines: static pinned frequencies
-            'Static_P_1.0GHz': dvfs.make_static('P_1.0GHz')(*policy_args, metric=m_type),
-            'Static_P_2.0GHz': dvfs.make_static('P_2.0GHz')(*policy_args, metric=m_type),
-            'Static_P_3.0GHz': dvfs.make_static('P_3.0GHz')(*policy_args, metric=m_type),
-            'Static_P_4.0GHz': dvfs.make_static('P_4.0GHz')(*policy_args, metric=m_type),
-            # Reactive oracle: prior chunk's TRUE timings to decide current chunk (causal)
-            'Reactive_Oracle_P': dvfs.make_reactive_oracle('P')(*policy_args, metric=m_type),
-            # Perfect-future oracle policies: see current/future chunk data (not deployable)
-            'Greedy_Oracle_P': dvfs.make_proactive_1_step('P')(*policy_args, metric=m_type),
-            'MPC_Oracle_P_W5': dvfs.make_proactive_n_step('P', horizon=5)(*policy_args, metric=m_type),
-            'MPC_Oracle_P_W10': dvfs.make_proactive_n_step('P', horizon=10)(*policy_args, metric=m_type),
-            'Global_Oracle_P': dvfs.make_global_viterbi('P')(*policy_args, metric=m_type),
-            # Industry OS governors (use proxy signal, practical)
-            'Performance_Gov_P': dvfs.run_performance_governor(*policy_args, metric=m_type),
-            'Ondemand_P': dvfs.make_ondemand('P')(*policy_args, metric=m_type),
-            'Conservative_P': dvfs.make_conservative('P')(*policy_args, metric=m_type),
-            'Schedutil_PELT_P': dvfs.make_schedutil_pelt('P')(*policy_args, metric=m_type),
-            'Intel_HWP_P': dvfs.run_intel_hwp(*policy_args, metric=m_type),
-            # Academic prediction / online learning (practical)
-            'EWMA_P': dvfs.make_ewma_dvfs('P')(*policy_args, metric=m_type),
-            'UCB1_P': dvfs.make_ucb1_dvfs('P')(*policy_args, metric=m_type),
-            'Random_P': dvfs.make_random_dvfs('P')(*policy_args, metric=m_type),
-        }
 
-        # Model-based P-core DVFS: CatBoost cross-freq predictions as decision input.
-        # Only added when model_time_mat was loaded from model_pred_dir.
-        if model_time_mat is not None:
-            model_policy_args = (*policy_args, model_time_mat)
-            p_traces.update({
-                'Model_Greedy_P': dvfs.make_model_1_step('P')(*model_policy_args, metric=m_type),
-                'Model_Global_P': dvfs.make_model_global('P')(*model_policy_args, metric=m_type),
-            })
+    METRICS = ['EDP', 'ED2P']
 
-        # 2. E-Core DVFS Policies
-        e_traces = {
-            # Baselines: static pinned frequencies
-            'Static_E_1.0GHz': dvfs.make_static('E_1.0GHz')(*policy_args, metric=m_type),
-            'Static_E_2.0GHz': dvfs.make_static('E_2.0GHz')(*policy_args, metric=m_type),
-            'Static_E_3.0GHz': dvfs.make_static('E_3.0GHz')(*policy_args, metric=m_type),
-            'Static_E_4.0GHz': dvfs.make_static('E_4.0GHz')(*policy_args, metric=m_type),
-            # Reactive oracle: prior chunk's TRUE timings to decide current chunk (causal)
-            'Reactive_Oracle_E': dvfs.make_reactive_oracle('E')(*policy_args, metric=m_type),
-            # Perfect-future oracle policies: see current/future chunk data (not deployable)
-            'Greedy_Oracle_E': dvfs.make_proactive_1_step('E')(*policy_args, metric=m_type),
-            'MPC_Oracle_E_W5': dvfs.make_proactive_n_step('E', horizon=5)(*policy_args, metric=m_type),
-            'MPC_Oracle_E_W10': dvfs.make_proactive_n_step('E', horizon=10)(*policy_args, metric=m_type),
-            'Global_Oracle_E': dvfs.make_global_viterbi('E')(*policy_args, metric=m_type),
-            # Industry OS governors (use proxy signal, practical)
-            'Ondemand_E': dvfs.make_ondemand('E')(*policy_args, metric=m_type),
-            'Conservative_E': dvfs.make_conservative('E')(*policy_args, metric=m_type),
-            'Schedutil_PELT_E': dvfs.make_schedutil_pelt('E')(*policy_args, metric=m_type),
-            # Academic prediction / online learning (practical)
-            'EWMA_E': dvfs.make_ewma_dvfs('E')(*policy_args, metric=m_type),
-            'UCB1_E': dvfs.make_ucb1_dvfs('E')(*policy_args, metric=m_type),
-            'Random_E': dvfs.make_random_dvfs('E')(*policy_args, metric=m_type),
-        }
-        
-        # 3. Heterogeneous Scheduling Policies (P vs E)
-        hetero_traces = {
-            # Global oracle bound (full P+E x freq Viterbi)
-            'Proactive_Hetero_Oracle': sched.run_proactive_hetero_oracle(*policy_args, metric=m_type),
-            # Iso-frequency oracles: ablation separating core selection from freq scaling
-            'IsoFreq_Oracle_1.0GHz': sched.make_global_oracle_fixed_freq('1.0GHz')(*policy_args, metric=m_type),
-            'IsoFreq_Oracle_2.0GHz': sched.make_global_oracle_fixed_freq('2.0GHz')(*policy_args, metric=m_type),
-            'IsoFreq_Oracle_3.0GHz': sched.make_global_oracle_fixed_freq('3.0GHz')(*policy_args, metric=m_type),
-            'IsoFreq_Oracle_4.0GHz': sched.make_global_oracle_fixed_freq('4.0GHz')(*policy_args, metric=m_type),
-            # Industry: Linux EAS variants
-            'EAS_Hetero': sched.make_eas_hetero()(*policy_args, metric=m_type),
-            'EAS_With_DVFS': sched.make_eas_with_dvfs()(*policy_args, metric=m_type),
-            # Industry: ARM big.LITTLE hysteresis migration
-            'Threshold_Migration': sched.make_threshold_migration()(*policy_args, metric=m_type),
-            # Industry: Intel Thread Director classification + DVFS
-            'Thread_Director': sched.make_thread_director()(*policy_args, metric=m_type),
-            # Simplified EAS (2-config reactive baseline)
-            'Micro_EAS': sched.run_micro_eas(*policy_args, metric=m_type),
-            # Online learning across full P+E space
-            'UCB1_Hetero': sched.make_ucb1_hetero()(*policy_args, metric=m_type),
-        }
-        
-        # 4. Combined DVFS + Migration Policies
-        combined_traces = {
-            # Reactive history-lookback (practical, causal)
-            'Reactive_Combined_W1': comb.make_reactive_n_step_combined(lookback=1)(*policy_args, metric=m_type),
-            'Reactive_Combined_W5': comb.make_reactive_n_step_combined(lookback=5)(*policy_args, metric=m_type),
-            'Reactive_Combined_W10': comb.make_reactive_n_step_combined(lookback=10)(*policy_args, metric=m_type),
-            # MPC oracle lookahead (requires future timing data)
-            'MPC_Oracle_Combined_W1': comb.make_proactive_n_step_combined(horizon=1)(*policy_args, metric=m_type),
-            'MPC_Oracle_Combined_W5': comb.make_proactive_n_step_combined(horizon=5)(*policy_args, metric=m_type),
-            'MPC_Oracle_Combined_W10': comb.make_proactive_n_step_combined(horizon=10)(*policy_args, metric=m_type),
-            # Industry hetero policies shown alongside MPC for direct comparison
-            'EAS_Hetero': hetero_traces['EAS_Hetero'],
-            'EAS_With_DVFS': hetero_traces['EAS_With_DVFS'],
-            'Threshold_Migration': hetero_traces['Threshold_Migration'],
-            'Thread_Director': hetero_traces['Thread_Director'],
-            'UCB1_Hetero': hetero_traces['UCB1_Hetero'],
-            # Oracle bound
-            'Proactive_Hetero_Oracle': hetero_traces['Proactive_Hetero_Oracle'],
-        }
+    # Policy registries: {name: (fn, args_tuple, metric_kwarg)}
+    # Built once; metric_kwarg is passed per-call for metric-dependent policies.
 
-        # Aggregate Results
-        all_traces = {**p_traces, **e_traces, **hetero_traces, **combined_traces}
+    # 1. P-Core DVFS Policies
+    p_calls = {
+        # --- Static baselines ---
+        'Static_P_1.0GHz':       (dvfs.make_static('P_1.0GHz'),             policy_args),
+        'Static_P_2.0GHz':       (dvfs.make_static('P_2.0GHz'),             policy_args),
+        'Static_P_3.0GHz':       (dvfs.make_static('P_3.0GHz'),             policy_args),
+        'Static_P_4.0GHz':       (dvfs.make_static('P_4.0GHz'),             policy_args),
+        # --- Reactive heuristics (decide using prior chunk's proxy) ---
+        'Performance_Gov_P':     (dvfs.make_performance_governor('P'),       policy_args),
+        'Ondemand_P':            (dvfs.make_ondemand('P'),                   policy_args),
+        'Conservative_P':        (dvfs.make_conservative('P'),               policy_args),
+        'Schedutil_PELT_P':      (dvfs.make_schedutil_pelt('P'),            policy_args),
+        'Intel_HWP_P':           (dvfs.make_intel_hwp('P'),                  policy_args),
+        'EWMA_P':                (dvfs.make_ewma_dvfs('P'),                  policy_args),
+        'UCB1_P':                (dvfs.make_ucb1_dvfs('P'),                  policy_args),
+        # --- Reactive oracle (repeats prior chunk's best config) ---
+        'Reactive_Oracle_P':     (dvfs.make_reactive_oracle('P'),            policy_args),
+        # --- Perfect-future heuristics (same algorithms, current chunk's true proxy) ---
+        'Ondemand_Future_P':     (dvfs.make_ondemand('P',     temporal_mode='oracle_heuristic'), policy_args),
+        'Conservative_Future_P': (dvfs.make_conservative('P', temporal_mode='oracle_heuristic'), policy_args),
+        'Schedutil_Future_P':    (dvfs.make_schedutil_pelt('P', temporal_mode='oracle_heuristic'), policy_args),
+        'Intel_HWP_Future_P':    (dvfs.make_intel_hwp('P',   temporal_mode='oracle_heuristic'), policy_args),
+        'EWMA_Future_P':         (dvfs.make_ewma_dvfs('P',   temporal_mode='oracle_heuristic'), policy_args),
+        'UCB1_Future_P':         (dvfs.make_ucb1_dvfs('P',   temporal_mode='oracle_heuristic'), policy_args),
+        # --- Oracle bounds ---
+        'Greedy_Oracle_P':       (dvfs.make_proactive_1_step('P'),           policy_args),
+        'Global_Oracle_P':       (dvfs.make_global_viterbi('P'),             policy_args),
+    }
+    if model_time_mat is not None:
+        model_policy_args = (*policy_args, model_time_mat)
+        p_calls.update({
+            # --- Reactive model (prior chunk PMU → predicted best config) ---
+            'Model_Greedy_P':        (dvfs.make_model_1_step('P'),        model_policy_args),
+            # --- Perfect-future model (current chunk PMU, oracle temporal) ---
+            'Model_Greedy_Oracle_P': (dvfs.make_model_1_step_oracle('P'), model_policy_args),
+            'Model_Global_P':        (dvfs.make_model_global('P'),        model_policy_args),
+        })
+
+    # 2. E-Core DVFS Policies
+    e_calls = {
+        # --- Static baselines ---
+        'Static_E_1.0GHz':       (dvfs.make_static('E_1.0GHz'),             policy_args),
+        'Static_E_2.0GHz':       (dvfs.make_static('E_2.0GHz'),             policy_args),
+        'Static_E_3.0GHz':       (dvfs.make_static('E_3.0GHz'),             policy_args),
+        'Static_E_4.0GHz':       (dvfs.make_static('E_4.0GHz'),             policy_args),
+        # --- Reactive heuristics (decide using prior chunk's proxy) ---
+        'Performance_Gov_E':     (dvfs.make_performance_governor('E'),       policy_args),
+        'Ondemand_E':            (dvfs.make_ondemand('E'),                   policy_args),
+        'Conservative_E':        (dvfs.make_conservative('E'),               policy_args),
+        'Schedutil_PELT_E':      (dvfs.make_schedutil_pelt('E'),            policy_args),
+        'Intel_HWP_E':           (dvfs.make_intel_hwp('E'),                  policy_args),
+        'EWMA_E':                (dvfs.make_ewma_dvfs('E'),                  policy_args),
+        'UCB1_E':                (dvfs.make_ucb1_dvfs('E'),                  policy_args),
+        # --- Reactive oracle (repeats prior chunk's best config) ---
+        'Reactive_Oracle_E':     (dvfs.make_reactive_oracle('E'),            policy_args),
+        # --- Perfect-future heuristics (same algorithms, current chunk's true proxy) ---
+        'Ondemand_Future_E':     (dvfs.make_ondemand('E',     temporal_mode='oracle_heuristic'), policy_args),
+        'Conservative_Future_E': (dvfs.make_conservative('E', temporal_mode='oracle_heuristic'), policy_args),
+        'Schedutil_Future_E':    (dvfs.make_schedutil_pelt('E', temporal_mode='oracle_heuristic'), policy_args),
+        'Intel_HWP_Future_E':    (dvfs.make_intel_hwp('E',   temporal_mode='oracle_heuristic'), policy_args),
+        'EWMA_Future_E':         (dvfs.make_ewma_dvfs('E',   temporal_mode='oracle_heuristic'), policy_args),
+        'UCB1_Future_E':         (dvfs.make_ucb1_dvfs('E',   temporal_mode='oracle_heuristic'), policy_args),
+        # --- Oracle bounds ---
+        'Greedy_Oracle_E':       (dvfs.make_proactive_1_step('E'),           policy_args),
+        'Global_Oracle_E':       (dvfs.make_global_viterbi('E'),             policy_args),
+    }
+    if e_model_time_mat is not None:
+        e_model_policy_args = (*policy_args, e_model_time_mat)
+        e_calls.update({
+            # --- Reactive model (prior chunk PMU → predicted best E-core config) ---
+            'Model_Greedy_E':        (dvfs.make_model_1_step('E'),        e_model_policy_args),
+            # --- Perfect-future model (current chunk PMU, oracle temporal) ---
+            'Model_Greedy_Oracle_E': (dvfs.make_model_1_step_oracle('E'), e_model_policy_args),
+            'Model_Global_E':        (dvfs.make_model_global('E'),        e_model_policy_args),
+        })
+
+    # 3. Heterogeneous Scheduling Policies (P vs E)
+    hetero_calls = {
+        'Proactive_Hetero_Oracle':    (sched.run_proactive_hetero_oracle, policy_args),
+        'Greedy_Oracle_Hetero':       (sched.make_greedy_oracle_hetero(), policy_args),
+        'IsoFreq_Oracle_1.0GHz':      (sched.make_global_oracle_fixed_freq('1.0GHz'), policy_args),
+        'IsoFreq_Oracle_2.0GHz':      (sched.make_global_oracle_fixed_freq('2.0GHz'), policy_args),
+        'IsoFreq_Oracle_3.0GHz':      (sched.make_global_oracle_fixed_freq('3.0GHz'), policy_args),
+        'IsoFreq_Oracle_4.0GHz':      (sched.make_global_oracle_fixed_freq('4.0GHz'), policy_args),
+        'IsoFreq_Reactive_Oracle_1.0GHz': (sched.make_reactive_oracle_fixed_freq('1.0GHz'), policy_args),
+        'IsoFreq_Reactive_Oracle_2.0GHz': (sched.make_reactive_oracle_fixed_freq('2.0GHz'), policy_args),
+        'IsoFreq_Reactive_Oracle_3.0GHz': (sched.make_reactive_oracle_fixed_freq('3.0GHz'), policy_args),
+        'IsoFreq_Reactive_Oracle_4.0GHz': (sched.make_reactive_oracle_fixed_freq('4.0GHz'), policy_args),
+        'IsoFreq_Oracle_Heuristic_1.0GHz': (sched.make_isofreq_oracle_heuristic('1.0GHz'), policy_args),
+        'IsoFreq_Oracle_Heuristic_2.0GHz': (sched.make_isofreq_oracle_heuristic('2.0GHz'), policy_args),
+        'IsoFreq_Oracle_Heuristic_3.0GHz': (sched.make_isofreq_oracle_heuristic('3.0GHz'), policy_args),
+        'IsoFreq_Oracle_Heuristic_4.0GHz': (sched.make_isofreq_oracle_heuristic('4.0GHz'), policy_args),
+        'EAS_Hetero':          (sched.make_eas_hetero(),          policy_args),
+        'EAS_With_DVFS':       (sched.make_eas_with_dvfs(),       policy_args),
+        'Threshold_Migration': (sched.make_threshold_migration(), policy_args),
+        'Thread_Director':     (sched.make_thread_director(),     policy_args),
+        'Micro_EAS':           (sched.run_micro_eas,              policy_args),
+        'UCB1_Hetero':         (sched.make_ucb1_hetero(),         policy_args),
+        'EAS_Oracle_Hetero':   (sched.make_eas_oracle(),          policy_args),
+        'Thread_Director_Oracle': (sched.make_thread_director_oracle(), policy_args),
+    }
+    if cross_proc_time_mat is not None:
+        cross_proc_args = (*policy_args, cross_proc_time_mat)
+        for freq in ['1.0GHz', '2.0GHz', '3.0GHz', '4.0GHz']:
+            hetero_calls[f'Model_IsoFreq_{freq}']        = (sched.make_isofreq_model(freq),        cross_proc_args)
+            hetero_calls[f'IsoFreq_Model_Oracle_{freq}'] = (sched.make_isofreq_model_oracle(freq), cross_proc_args)
+    if full_model_time_mat is not None:
+        full_model_args = (*policy_args, full_model_time_mat)
+        hetero_calls['Model_Reactive_Hetero']      = (sched.make_hetero_model_reactive(), full_model_args)
+        hetero_calls['Model_Greedy_Oracle_Hetero'] = (sched.make_hetero_model_oracle(),   full_model_args)
+
+    # 4. Combined DVFS + Migration Policies
+    combined_calls = {
+        'Reactive_Combined_W1':   (comb.make_reactive_n_step_combined(lookback=1),  policy_args),
+        'Reactive_Combined_W5':   (comb.make_reactive_n_step_combined(lookback=5),  policy_args),
+        'Reactive_Combined_W10':  (comb.make_reactive_n_step_combined(lookback=10), policy_args),
+        'MPC_Oracle_Combined_W1': (comb.make_proactive_n_step_combined(horizon=1),  policy_args),
+        'MPC_Oracle_Combined_W5': (comb.make_proactive_n_step_combined(horizon=5),  policy_args),
+        'MPC_Oracle_Combined_W10':(comb.make_proactive_n_step_combined(horizon=10), policy_args),
+    }
+
+    def _run_calls(calls, traces_by_metric):
+        """Evaluate all policies, using dual-metric fast path for metric-independent ones."""
+        for name, (fn, args_) in calls.items():
+            if getattr(fn, 'metric_independent', False):
+                traces = fn(*args_, metrics=METRICS)
+                for m, tr in traces.items():
+                    traces_by_metric[m][name] = tr
+            elif viterbi_cache_dir is not None and getattr(fn, 'is_viterbi_oracle', False):
+                for m in METRICS:
+                    cache_file = viterbi_cache_dir / f"{wl}__{ph}__{name}__{m}.npy"
+                    if cache_file.exists():
+                        traces_by_metric[m][name] = np.load(cache_file)
+                    else:
+                        tr, st = _call_with_stats(fn, *args_, metric=m)
+                        traces_by_metric[m][name] = tr
+                        np.save(cache_file, tr)
+                        _record_diag(diag_results, wl, ph, m, name, st)
+            else:
+                for m in METRICS:
+                    tr, st = _call_with_stats(fn, *args_, metric=m)
+                    traces_by_metric[m][name] = tr
+                    _record_diag(diag_results, wl, ph, m, name, st)
+
+    p_traces   = {m: {} for m in METRICS}
+    e_traces   = {m: {} for m in METRICS}
+    hetero_traces   = {m: {} for m in METRICS}
+    combined_traces = {m: {} for m in METRICS}
+
+    _run_calls(p_calls,       p_traces)
+    _run_calls(e_calls,       e_traces)
+    _run_calls(hetero_calls,  hetero_traces)
+    _run_calls(combined_calls, combined_traces)
+
+    # Mirror shared industry policies into combined_traces
+    for key in ('EAS_Hetero', 'EAS_With_DVFS', 'Threshold_Migration', 'Thread_Director',
+                'UCB1_Hetero', 'Proactive_Hetero_Oracle'):
+        for m in METRICS:
+            combined_traces[m][key] = hetero_traces[m][key]
+
+    # Aggregate Results
+    for m_type in METRICS:
+        all_traces = {**p_traces[m_type], **e_traces[m_type],
+                      **hetero_traces[m_type], **combined_traces[m_type]}
         for name, tr in all_traces.items():
             if len(tr) > 0:
                 summary_results.append({'Workload': wl, 'Phase': ph, 'Metric': m_type, 'Policy': name, 'Final_Value': tr[-1]})
-        
-    return summary_results
+
+    return summary_results, diag_results
 
 def main():
     parser = argparse.ArgumentParser()
@@ -277,10 +366,22 @@ def main():
     parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
                          help="'per_sample' uses measured per-chunk power (default); "
                               "'baseline' uses the fixed get_power_w lookup table for all configs.")
-    parser.add_argument('--model_pred_dir', type=str, default=None,
-                        help="Directory with precomputed cross-freq model predictions "
+    parser.add_argument('--cross_freq_pred_dir', type=str, default=None,
+                        help="Directory with precomputed P-core cross-freq model predictions "
                              "(output of cross_freq_precompute.py). When provided, adds "
-                             "Model_Greedy_P, Model_MPC_P_W5/W10, Model_Global_P policies.")
+                             "Model_Greedy_P, Model_Greedy_Oracle_P, Model_Global_P policies.")
+    parser.add_argument('--cross_freq_e_pred_dir', type=str, default=None,
+                        help="Directory with precomputed E-core cross-freq model predictions "
+                             "(output of cross_freq_precompute.py --core_type E). When provided, adds "
+                             "Model_Greedy_E, Model_Greedy_Oracle_E, Model_Global_E policies.")
+    parser.add_argument('--cross_proc_pred_dir', type=str, default=None,
+                        help="Directory with precomputed cross-proc model predictions "
+                             "(output of cross_proc_precompute.py). When provided, adds "
+                             "Model_IsoFreq_{1-4}GHz policies.")
+    parser.add_argument('--viterbi_cache_dir', type=str, default=None,
+                        help="Directory to cache/load global-oracle Viterbi traces. "
+                             "On first run, computed traces are saved here; subsequent "
+                             "runs with the same data load from cache, skipping the DP.")
     args = parser.parse_args()
 
     import pandas as pd
@@ -288,7 +389,12 @@ def main():
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    model_pred_dir = Path(args.model_pred_dir) if args.model_pred_dir else None
+    cross_freq_pred_dir = Path(args.cross_freq_pred_dir) if args.cross_freq_pred_dir else None
+    cross_freq_e_pred_dir = Path(args.cross_freq_e_pred_dir) if args.cross_freq_e_pred_dir else None
+    cross_proc_pred_dir = Path(args.cross_proc_pred_dir) if args.cross_proc_pred_dir else None
+    viterbi_cache_dir = Path(args.viterbi_cache_dir) if args.viterbi_cache_dir else None
+    if viterbi_cache_dir is not None:
+        viterbi_cache_dir.mkdir(parents=True, exist_ok=True)
 
     pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
@@ -297,23 +403,32 @@ def main():
     print(f"Starting Modular Simulator for {len(pairs)} workload-phases...")
 
     all_summary = []
+    all_diag = []
     with concurrent.futures.ProcessPoolExecutor() as executor:
         futures = {
             executor.submit(
                 process_workload, wl, ph, pairs, input_path, configs,
-                args.power_mode, model_pred_dir
+                args.power_mode, cross_freq_pred_dir, cross_freq_e_pred_dir, cross_proc_pred_dir,
+                viterbi_cache_dir
             ): (wl, ph)
             for wl, ph in pairs
         }
         for future in concurrent.futures.as_completed(futures):
             res = future.result()
             if res:
-                all_summary.extend(res)
+                summary, diag = res
+                all_summary.extend(summary)
+                all_diag.extend(diag)
 
     if all_summary:
         df = pd.DataFrame(all_summary)
         print(f"\nSimulation complete. Generating plots and CSVs...")
         plotter.generate_all_plots(df, output_path)
+        if all_diag:
+            diag_df = pd.DataFrame(all_diag)
+            diag_path = output_path / 'diagnostics.csv'
+            diag_df.to_csv(diag_path, index=False)
+            print(f"Diagnostics written to {diag_path}")
     else:
         print("\nNo valid data processed.")
 
