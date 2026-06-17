@@ -397,3 +397,14 @@ def make_model_global(core_type='P'):
     )
 
 
+def make_model_1_step_oracle_k(core_type='P', k=1):
+    """Model oracle with k-step lookahead: averages predicted times for chunks i..i+k."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='oracle',
+        lookahead_k=k,
+    )
+
+

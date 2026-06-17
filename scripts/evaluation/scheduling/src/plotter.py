@@ -469,7 +469,7 @@ _TAXONOMY_BARS = {
         ('Forecast\nModel',                  None,                        True),
         ('Forecast\nOracle',                 None,                        True),
         ('Perfect\nHeuristic\n(best)',       '__best_heuristic_oracle__', False),
-        ('Perfect\nModel',                   None,                        True),
+        ('Perfect\nModel\n(CatBoost)',       'Model_Greedy_Oracle_E',     False),
         ('Perfect\nOracle\n(Greedy)',        'Greedy_Oracle_E',           False),
         ('Global\nOracle',                   'Global_Oracle_E',           False),
     ],

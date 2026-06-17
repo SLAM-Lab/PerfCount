@@ -429,6 +429,27 @@ def make_isofreq_model_oracle(target_freq):
     )
 
 
+def make_isofreq_model_oracle_k(target_freq, k=1):
+    """Cross-proc model oracle with k-step lookahead: averages chunks i..i+k."""
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+        lookahead_k=k,
+    )
+
+
 # ==========================================
 # ISOFREQ ORACLE HEURISTIC: EAS-style with current chunk's TRUE timing
 # ==========================================
@@ -506,6 +527,18 @@ def make_hetero_model_oracle():
         temporal='oracle',
         src_idx_fn=_src_cfg_idx,
         start_idx_fn=_p_max_start_idx,
+    )
+
+
+def make_hetero_model_oracle_k(k=1):
+    """Full P+E model oracle with k-step lookahead: averages chunks i..i+k."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+        lookahead_k=k,
     )
 
 

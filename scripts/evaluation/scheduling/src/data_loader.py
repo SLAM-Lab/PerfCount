@@ -286,6 +286,41 @@ def _load_cross_proc_time_mat(wl, ph, cross_proc_pred_dir, configs, min_len, ora
     return cross_proc_mat
 
 
+def load_workload_data(wl, phases_sorted, input_path, configs, **kwargs):
+    """Load and concatenate all phases for one workload into a single long trace.
+
+    phases_sorted: list of phase strings in temporal order (e.g. ['0', '1', '2']).
+    Returns the same 9-tuple as load_phase_data. If any phase lacks a model matrix
+    (e.g. cross-proc predictions not generated), that matrix is None for the whole
+    workload. Phases that fail to load are silently skipped.
+    """
+    parts = [load_phase_data(wl, ph, input_path, configs, **kwargs)
+             for ph in phases_sorted]
+    parts = [p for p in parts if p is not None]
+    if not parts:
+        return None
+
+    time_mat   = np.vstack([p[0] for p in parts])
+    energy_mat = np.vstack([p[1] for p in parts])
+    proxy      = np.concatenate([p[2] for p in parts])
+    valid_configs = parts[0][3]
+    min_len    = sum(p[4] for p in parts)
+
+    def _concat_model(idx):
+        mats = [p[idx] for p in parts]
+        if any(m is None for m in mats):
+            return None
+        return np.concatenate(mats, axis=1)
+
+    model_time_mat      = _concat_model(5)
+    e_model_time_mat    = _concat_model(6)
+    cross_proc_time_mat = _concat_model(7)
+    full_model_time_mat = _concat_model(8)
+
+    return (time_mat, energy_mat, proxy, valid_configs, min_len,
+            model_time_mat, e_model_time_mat, cross_proc_time_mat, full_model_time_mat)
+
+
 def _load_full_model_time_mat(model_time_mat, cross_proc_time_mat):
     """Combine cross-freq (P->P) and cross-proc (P<->E) predictions.
 

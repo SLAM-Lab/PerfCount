@@ -6,8 +6,8 @@ from pathlib import Path
 import concurrent.futures
 
 # Direct local imports (since they are in the same folder as main.py)
-from data_loader import load_phase_data
-from decision_policies import compute_trace_stats
+from data_loader import load_phase_data, load_workload_data
+from decision_policies import compute_trace_stats, accumulate_trace
 import dvfs_policies as dvfs
 import scheduling_policies as sched
 import plotter
@@ -38,13 +38,22 @@ def _record_diag(diag_results, wl, ph, m_type, name, st):
 # ==========================================
 # Cache warm-up penalty parameters (fill in from warmup_params.csv after measurement).
 # Set both A values to 0.0 to verify results are identical to the no-penalty baseline.
-# To apply: call warmup_model.apply_warmup_penalty(time_mat, policy_path, configs, ...)
-# for each policy after extracting its per-chunk config path.
-WARMUP_A_PtoE   = 0.0   # amplitude:  P→E warm-up slowdown (measured via warmup_collection.sh)
-WARMUP_TAU_PtoE = 1.0   # decay time: P→E (chunks until steady-state)
-WARMUP_A_EtoP   = 0.0   # amplitude:  E→P warm-up slowdown
-WARMUP_TAU_EtoP = 1.0   # decay time: E→P (chunks)
-WARMUP_K        = 50    # number of post-migration chunks to penalize
+# Estimates for 10M-instruction chunks on Intel Alder Lake:
+#   L3 is shared between P/E clusters, so only L1d/L2 + branch predictor + hw prefetchers
+#   go cold after migration.  Dominant costs at this chunk size:
+#     L2 cache cold-start (1-4M instruction warmup):   ~10-15% peak slowdown
+#     BTB/BHT miss spike (200K-1M instruction warmup): ~3-8% peak slowdown (gcc/perlbench worst)
+#     HW prefetcher retraining (50-200K accesses):     ~3-5% peak slowdown (memory-bound)
+#   P→E is larger: E-core shares 2MB L2 across 4 cores (~0.5MB effective) vs 1.25MB on P,
+#   and Golden Cove has more aggressive prefetch/BTB units that warm faster on E→P.
+#   tau in CHUNK units (1 chunk = 10M instructions ≈ 1-3ms at 3-4GHz):
+#     warmup completes in ~3-4M instructions = 0.3-0.4 chunks → tau ≈ 0.4 P→E, 0.3 E→P.
+#   Replace with warmup_collection.sh measurements when available.
+WARMUP_A_PtoE   = 0.20  # amplitude:  P→E peak slowdown (~20% at migration point)
+WARMUP_TAU_PtoE = 0.4   # decay time: P→E (chunks; warmup ~3-4M instr = 0.3-0.4 chunks)
+WARMUP_A_EtoP   = 0.12  # amplitude:  E→P peak slowdown (~12%; P-core warms faster)
+WARMUP_TAU_EtoP = 0.3   # decay time: E→P (chunks)
+WARMUP_K        = 10    # number of post-migration chunks to penalize (3 tau is enough)
 
 # P↔E context switch: mean 4.47μs, symmetric within 0.1μs (ctx_switch_bench, 10 reps × 5000 migrations)
 MIG_LAT_S  = 4.47e-6
@@ -165,13 +174,19 @@ def build_transition_matrices(configs):
     return lat_mat, nrg_mat
 
 def process_workload(wl, ph, pairs, input_path, configs,
-                     power_mode='per_sample', cross_freq_pred_dir=None,
+                     power_mode='per_sample', cross_freq_p_pred_dir=None,
                      cross_freq_e_pred_dir=None, cross_proc_pred_dir=None,
-                     viterbi_cache_dir=None):
-    data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode,
-                           model_pred_dir=cross_freq_pred_dir,
-                           e_model_pred_dir=cross_freq_e_pred_dir,
-                           cross_proc_pred_dir=cross_proc_pred_dir)
+                     viterbi_cache_dir=None, apply_warmup=False, phases=None):
+    if phases is not None:
+        data = load_workload_data(wl, phases, input_path, configs, power_mode=power_mode,
+                                  model_pred_dir=cross_freq_p_pred_dir,
+                                  e_model_pred_dir=cross_freq_e_pred_dir,
+                                  cross_proc_pred_dir=cross_proc_pred_dir)
+    else:
+        data = load_phase_data(wl, ph, input_path, configs, power_mode=power_mode,
+                               model_pred_dir=cross_freq_p_pred_dir,
+                               e_model_pred_dir=cross_freq_e_pred_dir,
+                               cross_proc_pred_dir=cross_proc_pred_dir)
     if data is None: return None
 
     time_mat, energy_mat, proxy_signal, valid_configs, min_len, model_time_mat, e_model_time_mat, cross_proc_time_mat, full_model_time_mat = data
@@ -221,10 +236,14 @@ def process_workload(wl, ph, pairs, input_path, configs,
         model_policy_args = (*policy_args, model_time_mat)
         p_calls.update({
             # --- Reactive model (prior chunk PMU → predicted best config) ---
-            'Model_Greedy_P':        (dvfs.make_model_1_step('P'),        model_policy_args),
+            'Model_Greedy_P':          (dvfs.make_model_1_step('P'),              model_policy_args),
             # --- Perfect-future model (current chunk PMU, oracle temporal) ---
-            'Model_Greedy_Oracle_P': (dvfs.make_model_1_step_oracle('P'), model_policy_args),
-            'Model_Global_P':        (dvfs.make_model_global('P'),        model_policy_args),
+            'Model_Greedy_Oracle_P':   (dvfs.make_model_1_step_oracle('P'),       model_policy_args),
+            # --- Oracle lookahead (average of next k+1 chunks' predictions) ---
+            'Model_Greedy_Oracle_k1_P': (dvfs.make_model_1_step_oracle_k('P', k=1), model_policy_args),
+            'Model_Greedy_Oracle_k2_P': (dvfs.make_model_1_step_oracle_k('P', k=2), model_policy_args),
+            'Model_Greedy_Oracle_k5_P': (dvfs.make_model_1_step_oracle_k('P', k=5), model_policy_args),
+            'Model_Global_P':          (dvfs.make_model_global('P'),              model_policy_args),
         })
 
     # 2. E-Core DVFS Policies
@@ -259,10 +278,14 @@ def process_workload(wl, ph, pairs, input_path, configs,
         e_model_policy_args = (*policy_args, e_model_time_mat)
         e_calls.update({
             # --- Reactive model (prior chunk PMU → predicted best E-core config) ---
-            'Model_Greedy_E':        (dvfs.make_model_1_step('E'),        e_model_policy_args),
+            'Model_Greedy_E':          (dvfs.make_model_1_step('E'),              e_model_policy_args),
             # --- Perfect-future model (current chunk PMU, oracle temporal) ---
-            'Model_Greedy_Oracle_E': (dvfs.make_model_1_step_oracle('E'), e_model_policy_args),
-            'Model_Global_E':        (dvfs.make_model_global('E'),        e_model_policy_args),
+            'Model_Greedy_Oracle_E':   (dvfs.make_model_1_step_oracle('E'),       e_model_policy_args),
+            # --- Oracle lookahead (average of next k+1 chunks' predictions) ---
+            'Model_Greedy_Oracle_k1_E': (dvfs.make_model_1_step_oracle_k('E', k=1), e_model_policy_args),
+            'Model_Greedy_Oracle_k2_E': (dvfs.make_model_1_step_oracle_k('E', k=2), e_model_policy_args),
+            'Model_Greedy_Oracle_k5_E': (dvfs.make_model_1_step_oracle_k('E', k=5), e_model_policy_args),
+            'Model_Global_E':          (dvfs.make_model_global('E'),              e_model_policy_args),
         })
 
     # 3. Heterogeneous Scheduling Policies (P vs E)
@@ -295,10 +318,14 @@ def process_workload(wl, ph, pairs, input_path, configs,
         for freq in ['1.0GHz', '2.0GHz', '3.0GHz', '4.0GHz']:
             hetero_calls[f'Model_IsoFreq_{freq}']        = (sched.make_isofreq_model(freq),        cross_proc_args)
             hetero_calls[f'IsoFreq_Model_Oracle_{freq}'] = (sched.make_isofreq_model_oracle(freq), cross_proc_args)
+            for k in [1, 2, 5]:
+                hetero_calls[f'IsoFreq_Model_Oracle_k{k}_{freq}'] = (sched.make_isofreq_model_oracle_k(freq, k=k), cross_proc_args)
     if full_model_time_mat is not None:
         full_model_args = (*policy_args, full_model_time_mat)
-        hetero_calls['Model_Reactive_Hetero']      = (sched.make_hetero_model_reactive(), full_model_args)
-        hetero_calls['Model_Greedy_Oracle_Hetero'] = (sched.make_hetero_model_oracle(),   full_model_args)
+        hetero_calls['Model_Reactive_Hetero']        = (sched.make_hetero_model_reactive(), full_model_args)
+        hetero_calls['Model_Greedy_Oracle_Hetero']   = (sched.make_hetero_model_oracle(),   full_model_args)
+        for k in [1, 2, 5]:
+            hetero_calls[f'Model_Greedy_Oracle_k{k}_Hetero'] = (sched.make_hetero_model_oracle_k(k=k), full_model_args)
 
     # 4. Combined DVFS + Migration Policies
     combined_calls = {
@@ -310,23 +337,62 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'MPC_Oracle_Combined_W10':(comb.make_proactive_n_step_combined(horizon=10), policy_args),
     }
 
+    def _apply_warmup_trace(fn, args_, m):
+        """Run policy, apply cache-warmup penalty to cross-cluster migrations, recompute trace."""
+        trace, actions, local_names = fn(*args_, _return_actions=True, metric=m)
+        st = compute_trace_stats(list(actions), local_names)
+        if WARMUP_A_PtoE == 0.0 and WARMUP_A_EtoP == 0.0:
+            return trace, st
+        # Reconstruct the submatrix for this policy's action space from the full matrices.
+        # args_[0]=time_mat, args_[1]=energy_mat, args_[3]=configs, args_[5]=trans_lat, args_[6]=trans_nrg
+        idx = [configs.index(c) for c in local_names]
+        t_sub   = time_mat[:, idx]
+        e_sub   = energy_mat[:, idx]
+        lat_sub = trans_lat[np.ix_(idx, idx)]
+        nrg_sub = trans_nrg[np.ix_(idx, idx)]
+        pen_t = warmup_model.apply_warmup_penalty(
+            t_sub, actions, local_names,
+            WARMUP_A_PtoE, WARMUP_TAU_PtoE,
+            WARMUP_A_EtoP, WARMUP_TAU_EtoP, WARMUP_K,
+        )
+        trace = accumulate_trace(pen_t, e_sub, lat_sub, nrg_sub, actions, metric=m)
+        return trace, st
+
     def _run_calls(calls, traces_by_metric):
         """Evaluate all policies, using dual-metric fast path for metric-independent ones."""
         for name, (fn, args_) in calls.items():
             if getattr(fn, 'metric_independent', False):
+                # Single-cluster DVFS only — no P↔E migrations, warmup never fires.
                 traces = fn(*args_, metrics=METRICS)
                 for m, tr in traces.items():
                     traces_by_metric[m][name] = tr
-            elif viterbi_cache_dir is not None and getattr(fn, 'is_viterbi_oracle', False):
+            elif getattr(fn, 'is_viterbi_oracle', False):
                 for m in METRICS:
-                    cache_file = viterbi_cache_dir / f"{wl}__{ph}__{name}__{m}.npy"
-                    if cache_file.exists():
-                        traces_by_metric[m][name] = np.load(cache_file)
+                    if apply_warmup and getattr(fn, 'returns_actions', False):
+                        # Warmup: bypass cache — recompute path and penalize it.
+                        # Note: the DP found the warmup-unaware optimal path, so this
+                        # is a conservative bound (oracle that ignores warmup in planning).
+                        tr, st = _apply_warmup_trace(fn, args_, m)
+                        traces_by_metric[m][name] = tr
+                        _record_diag(diag_results, wl, ph, m, name, st)
+                    elif viterbi_cache_dir is not None:
+                        cache_file = viterbi_cache_dir / f"{wl}__{ph}__{name}__{m}.npy"
+                        if cache_file.exists():
+                            traces_by_metric[m][name] = np.load(cache_file)
+                        else:
+                            tr, st = _call_with_stats(fn, *args_, metric=m)
+                            traces_by_metric[m][name] = tr
+                            np.save(cache_file, tr)
+                            _record_diag(diag_results, wl, ph, m, name, st)
                     else:
                         tr, st = _call_with_stats(fn, *args_, metric=m)
                         traces_by_metric[m][name] = tr
-                        np.save(cache_file, tr)
                         _record_diag(diag_results, wl, ph, m, name, st)
+            elif apply_warmup and getattr(fn, 'returns_actions', False):
+                for m in METRICS:
+                    tr, st = _apply_warmup_trace(fn, args_, m)
+                    traces_by_metric[m][name] = tr
+                    _record_diag(diag_results, wl, ph, m, name, st)
             else:
                 for m in METRICS:
                     tr, st = _call_with_stats(fn, *args_, metric=m)
@@ -366,7 +432,7 @@ def main():
     parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
                          help="'per_sample' uses measured per-chunk power (default); "
                               "'baseline' uses the fixed get_power_w lookup table for all configs.")
-    parser.add_argument('--cross_freq_pred_dir', type=str, default=None,
+    parser.add_argument('--cross_freq_p_pred_dir', type=str, default=None,
                         help="Directory with precomputed P-core cross-freq model predictions "
                              "(output of cross_freq_precompute.py). When provided, adds "
                              "Model_Greedy_P, Model_Greedy_Oracle_P, Model_Global_P policies.")
@@ -382,6 +448,17 @@ def main():
                         help="Directory to cache/load global-oracle Viterbi traces. "
                              "On first run, computed traces are saved here; subsequent "
                              "runs with the same data load from cache, skipping the DP.")
+    parser.add_argument('--apply_warmup', action='store_true', default=False,
+                        help="Apply cache-warmup time penalty after P↔E migrations. "
+                             "Uses WARMUP_A/TAU/K constants defined in main.py. "
+                             "Only affects policies that return an action sequence; "
+                             "Viterbi oracle baselines are evaluated without warmup.")
+    parser.add_argument('--cross_phase', action='store_true', default=False,
+                        help="Concatenate all phases per workload into one long trace "
+                             "before simulation. Phase-transition chunks are then visible "
+                             "in-band, exposing the reactive vs oracle gap at transitions. "
+                             "Results are labeled Phase='all'. Use a separate --output_dir "
+                             "to avoid mixing with per-phase results.")
     args = parser.parse_args()
 
     import pandas as pd
@@ -389,7 +466,7 @@ def main():
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
-    cross_freq_pred_dir = Path(args.cross_freq_pred_dir) if args.cross_freq_pred_dir else None
+    cross_freq_p_pred_dir = Path(args.cross_freq_p_pred_dir) if args.cross_freq_p_pred_dir else None
     cross_freq_e_pred_dir = Path(args.cross_freq_e_pred_dir) if args.cross_freq_e_pred_dir else None
     cross_proc_pred_dir = Path(args.cross_proc_pred_dir) if args.cross_proc_pred_dir else None
     viterbi_cache_dir = Path(args.viterbi_cache_dir) if args.viterbi_cache_dir else None
@@ -400,7 +477,28 @@ def main():
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
     configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
 
-    print(f"Starting Modular Simulator for {len(pairs)} workload-phases...")
+    common_kwargs = dict(
+        power_mode=args.power_mode,
+        cross_freq_p_pred_dir=cross_freq_p_pred_dir,
+        cross_freq_e_pred_dir=cross_freq_e_pred_dir,
+        cross_proc_pred_dir=cross_proc_pred_dir,
+        viterbi_cache_dir=viterbi_cache_dir,
+        apply_warmup=args.apply_warmup,
+    )
+
+    if args.cross_phase:
+        from collections import defaultdict
+        wl_to_phases = defaultdict(list)
+        for wl, ph in pairs:
+            wl_to_phases[wl].append(int(ph))
+        print(f"Starting Modular Simulator (cross-phase) for {len(wl_to_phases)} workloads...")
+        submit_items = [
+            (wl, 'all', sorted(ph_list))
+            for wl, ph_list in wl_to_phases.items()
+        ]
+    else:
+        print(f"Starting Modular Simulator for {len(pairs)} workload-phases...")
+        submit_items = [(wl, ph, None) for wl, ph in pairs]
 
     all_summary = []
     all_diag = []
@@ -408,10 +506,9 @@ def main():
         futures = {
             executor.submit(
                 process_workload, wl, ph, pairs, input_path, configs,
-                args.power_mode, cross_freq_pred_dir, cross_freq_e_pred_dir, cross_proc_pred_dir,
-                viterbi_cache_dir
+                **common_kwargs, phases=phases
             ): (wl, ph)
-            for wl, ph in pairs
+            for wl, ph, phases in submit_items
         }
         for future in concurrent.futures.as_completed(futures):
             res = future.result()

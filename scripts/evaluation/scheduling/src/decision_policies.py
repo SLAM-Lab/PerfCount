@@ -243,7 +243,8 @@ def decide_model_global(model_sub_t, model_sub_e, sub_lat, sub_nrg, metric):
 
 def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                                      window_size=None, start_idx_fn=None,
-                                     src_idx_fn=None, temporal='reactive'):
+                                     src_idx_fn=None, temporal='reactive',
+                                     lookahead_k=0):
     """Factory for model-based policies.
 
     Returned policy signature:
@@ -300,8 +301,13 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                 action = start_idx
             elif decision_mode == 'greedy':
                 row = i if temporal == 'oracle' else i - 1
-                window_t = model_sub_t[si, row, :][np.newaxis, :]
-                window_e = model_sub_e[si, row, :][np.newaxis, :]
+                if lookahead_k > 0 and temporal == 'oracle':
+                    end = min(i + lookahead_k + 1, n_chunks)
+                    window_t = model_sub_t[si, i:end, :].mean(axis=0, keepdims=True)
+                    window_e = model_sub_e[si, i:end, :].mean(axis=0, keepdims=True)
+                else:
+                    window_t = model_sub_t[si, row, :][np.newaxis, :]
+                    window_e = model_sub_e[si, row, :][np.newaxis, :]
                 action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
             elif decision_mode == 'mpc':
                 W = window_size or 1
