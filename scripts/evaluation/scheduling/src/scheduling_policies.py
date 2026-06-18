@@ -53,16 +53,17 @@ def _ensure_pe_indices(state, ctx):
 # ==========================================
 # GLOBAL HETERO ORACLE (Global, Oracle, full P+E x freq grid)
 # ==========================================
-def run_proactive_hetero_oracle(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+def run_proactive_hetero_oracle(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric, _return_actions=False):
     """Viterbi Dynamic Programming for Global Minimum across the full P+E x freq grid."""
     policy = make_policy_from_idx_list(
         idx_list_fn=_full_idx_list_fn,
         temporal_mode='oracle',
         decision_mode='global',
     )
-    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric, _return_actions=_return_actions)
 
 run_proactive_hetero_oracle.is_viterbi_oracle = True
+run_proactive_hetero_oracle.returns_actions = True
 
 
 # ==========================================
@@ -92,7 +93,7 @@ def _decide_heuristic_micro_eas(ctx, state):
     return curr, state
 
 
-def run_micro_eas(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric):
+def run_micro_eas(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric, _return_actions=False):
     policy = make_policy_from_idx_list(
         idx_list_fn=_full_idx_list_fn,
         temporal_mode='reactive',
@@ -102,7 +103,9 @@ def run_micro_eas(time_mat, energy_mat, proxy_signal, configs, valid_configs, tr
         heuristic_fn=_decide_heuristic_micro_eas,
         metric_independent=True,
     )
-    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric)
+    return policy(time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg, metric, _return_actions=_return_actions)
+
+run_micro_eas.returns_actions = True
 
 
 # ==========================================

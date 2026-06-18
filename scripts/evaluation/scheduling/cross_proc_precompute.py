@@ -3,14 +3,19 @@ cross_proc_precompute.py
 ========================
 Offline inference pass for cross-processor CatBoost models (P<->E migrations).
 
-For each SPEC2017 workload + phase:
+For each workload + phase across the specified suites:
   P-core sources (cpu0): loads aligned PMU CSVs and predicts to all 4 E-core
     frequencies via cpu0_to_cpu16 models.
   E-core sources (cpu16): loads aligned PMU CSVs and predicts to all 4 P-core
     frequencies via cpu16_to_cpu0 models.
 
+Supports multiple benchmark suites (spec2017, spec2026, dacapo) via the
+--suites flag.  Models for each suite are expected under:
+    <model_dir>/cpu0_to_cpu16/<suite>/full/
+    <model_dir>/cpu16_to_cpu0/<suite>/full/
+
 Output: one CSV per (workload, phase, src_core, src_freq) in
-    results/scheduling/cross_proc_predictions/speedups_from_{P|E}_<ghz>GHz/
+    <out_dir>/speedups_from_{P|E}_<ghz>GHz/
         {bench}_phase<ph>.csv
 
 CSV columns:
@@ -23,8 +28,9 @@ Usage:
     python cross_proc_precompute.py \\
         --model_dir results/cross_platform/cross_proc/x86_10M \\
         --pmu_dir processed_data_10M/x86_desktop_heterogeneous \\
-        --oracle_dir results/scheduling/speedup_test/granular_phase_traces \\
-        --out_dir results/scheduling/cross_proc_predictions
+        --oracle_dir results/scheduling/speedup_full/granular_phase_traces \\
+        --out_dir results/scheduling/cross_proc_predictions \\
+        --suites spec2017 spec2026 dacapo
 """
 
 import argparse
@@ -152,21 +158,39 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
     return mapes
 
 
-def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir):
+_ALL_SUITES = ['spec2017', 'spec2026', 'dacapo']
+
+
+def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None):
+    if suites is None:
+        suites = _ALL_SUITES
     feat_args = make_feature_args()
     model_dir = Path(model_dir)
     pmu_dir = Path(pmu_dir)
     oracle_dir = Path(oracle_dir)
     out_dir = Path(out_dir)
 
-    p_to_e_dir = model_dir / "cpu0_to_cpu16" / "spec2017" / "full"
-    e_to_p_dir = model_dir / "cpu16_to_cpu0" / "spec2017" / "full"
+    bench_to_dirs = {}
+    for suite in suites:
+        p_to_e_dir = model_dir / "cpu0_to_cpu16" / suite / "full"
+        e_to_p_dir = model_dir / "cpu16_to_cpu0" / suite / "full"
+        if not p_to_e_dir.exists():
+            print(f"[WARN] P->E model dir not found for suite '{suite}': {p_to_e_dir}")
+            continue
+        if not e_to_p_dir.exists():
+            print(f"[WARN] E->P model dir not found for suite '{suite}': {e_to_p_dir}")
+            continue
+        suite_benches = find_workloads(p_to_e_dir)
+        print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
+        for b in suite_benches:
+            bench_to_dirs[b] = (p_to_e_dir, e_to_p_dir)
 
-    benches = find_workloads(p_to_e_dir)
-    print(f"Found {len(benches)} workloads: {benches[:3]}...")
+    if not bench_to_dirs:
+        print("No workloads found across any suite.")
+        return
 
     all_mape = []
-    for bench in benches:
+    for bench, (p_to_e_dir, e_to_p_dir) in bench_to_dirs.items():
         bench_mapes = []
 
         bench_mapes += _process_direction(
@@ -189,15 +213,17 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model_dir", required=True,
-                        help="results/cross_platform/cross_proc/x86_10M")
+                        help="e.g. results/cross_platform/cross_proc/x86_10M")
     parser.add_argument("--pmu_dir", required=True,
-                        help="processed_data_10M/x86_desktop_heterogeneous")
+                        help="e.g. processed_data_10M/x86_desktop_heterogeneous")
     parser.add_argument("--oracle_dir", required=True,
-                        help="results/scheduling/speedup_test/granular_phase_traces")
+                        help="e.g. results/scheduling/speedup_full/granular_phase_traces")
     parser.add_argument("--out_dir", required=True,
-                        help="results/scheduling/cross_proc_predictions")
+                        help="e.g. results/scheduling/cross_proc_predictions")
+    parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
+                        help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
     args = parser.parse_args()
-    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir)
+    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir, args.suites)
 
 
 if __name__ == "__main__":

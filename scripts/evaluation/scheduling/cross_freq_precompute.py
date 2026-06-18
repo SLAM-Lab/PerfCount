@@ -3,28 +3,34 @@ cross_freq_precompute.py
 ========================
 Offline inference pass for cross-frequency CatBoost models.
 
-For each SPEC2017 workload + phase + P-core source frequency, loads the aligned
-PMU CSV, runs build_features(), and calls each of the three cross-freq models to
-produce model-predicted speedup ratios to the other 3 P-core frequencies.
+For each workload + phase + source frequency, loads the aligned PMU CSV,
+runs build_features(), and calls each of the three cross-freq models to
+produce model-predicted speedup ratios to the other 3 frequencies.
+
+Supports multiple benchmark suites (spec2017, spec2026, dacapo) via the
+--suites flag.  Models for each suite are expected under:
+    <model_base_dir>/<cpu>/<suite>/full/
 
 Output: one CSV per (workload, phase, src_freq) in
-    results/scheduling/model_predictions/speedups_from_P_<ghz>GHz/
-        speedups_P_<ghz>GHz_<bench>_phase<ph>.csv
+    <out_dir>/speedups_from_{P|E}_<ghz>GHz/
+        speedups_{P|E}_<ghz>GHz_<bench>_phase<ph>.csv
 
 CSV columns (matches data_loader.load_phase_data format):
-    sample_index, Time_P_<src>GHz,
-    Speedup_P_<tgt1>GHz_vs_P_<src>GHz,
-    Speedup_P_<tgt2>GHz_vs_P_<src>GHz,
-    Speedup_P_<tgt3>GHz_vs_P_<src>GHz
+    sample_index, Time_{P|E}_<src>GHz,
+    Speedup_{P|E}_<tgt1>GHz_vs_{P|E}_<src>GHz,
+    Speedup_{P|E}_<tgt2>GHz_vs_{P|E}_<src>GHz,
+    Speedup_{P|E}_<tgt3>GHz_vs_{P|E}_<src>GHz
 
 MAPE vs oracle speedup columns is printed per workload for validation.
 
 Usage:
     python cross_freq_precompute.py \
-        --model_dir results/cross_platform/cross_freq/x86_10M/cpu0/spec2017/full \
+        --model_base_dir results/cross_platform/cross_freq/x86_10M \
         --pmu_dir processed_data_10M/x86_desktop_heterogeneous \
-        --oracle_dir results/scheduling/speedup_test/granular_phase_traces \
-        --out_dir results/scheduling/model_predictions
+        --oracle_dir results/scheduling/speedup_full/granular_phase_traces \
+        --out_dir results/scheduling/cross_freq_predictions \
+        --core_type P \
+        --suites spec2017 spec2026 dacapo
 """
 
 import argparse
@@ -97,21 +103,36 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_freq, prefix):
     return oracle_time, speedups
 
 
-def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, core_type='P'):
+def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
+                   suites=None):
+    if suites is None:
+        suites = ['spec2017']
     feat_args = make_feature_args()
-    model_dir = Path(model_dir)
+    model_base_dir = Path(model_base_dir)
     pmu_dir = Path(pmu_dir)
     oracle_dir = Path(oracle_dir)
     out_dir = Path(out_dir)
     prefix = core_type          # 'P' or 'E'
     cpu_id = _CPU_ID[core_type] # 'cpu0' or 'cpu16'
 
-    benches = find_workloads(model_dir)
-    print(f"Found {len(benches)} workloads: {benches[:3]}...")
+    bench_to_model_dir = {}
+    for suite in suites:
+        suite_model_dir = model_base_dir / cpu_id / suite / "full"
+        if not suite_model_dir.exists():
+            print(f"[WARN] Model dir not found for suite '{suite}': {suite_model_dir}")
+            continue
+        suite_benches = find_workloads(suite_model_dir)
+        print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
+        for b in suite_benches:
+            bench_to_model_dir[b] = suite_model_dir
+
+    if not bench_to_model_dir:
+        print("No workloads found across any suite.")
+        return
 
     all_mape = []
 
-    for bench in benches:
+    for bench, model_dir in bench_to_model_dir.items():
         bench_mapes = []
         for src_freq in FREQS:
             tgt_freqs = [f for f in FREQS if f != src_freq]
@@ -200,20 +221,26 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, core_type='P'):
     print("Done.")
 
 
+_ALL_SUITES = ['spec2017', 'spec2026', 'dacapo']
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model_dir",  required=True,
-                        help="e.g. results/cross_platform/cross_freq/x86_10M/cpu0/spec2017/full")
+    parser.add_argument("--model_base_dir", required=True,
+                        help="e.g. results/cross_platform/cross_freq/x86_10M")
     parser.add_argument("--pmu_dir",    required=True,
                         help="e.g. processed_data_10M/x86_desktop_heterogeneous")
     parser.add_argument("--oracle_dir", required=True,
-                        help="e.g. results/scheduling/speedup_test/granular_phase_traces")
+                        help="e.g. results/scheduling/speedup_full/granular_phase_traces")
     parser.add_argument("--out_dir",    required=True,
-                        help="e.g. results/scheduling/model_predictions")
+                        help="e.g. results/scheduling/cross_freq_predictions")
     parser.add_argument("--core_type",  default='P', choices=['P', 'E'],
                         help="Core type: P (cpu0, default) or E (cpu16)")
+    parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
+                        help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
     args = parser.parse_args()
-    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir, args.core_type)
+    run_precompute(args.model_base_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
+                   args.core_type, args.suites)
 
 
 if __name__ == "__main__":
