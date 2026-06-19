@@ -71,150 +71,150 @@ ARM_TOP4="l3d_cache_refill branch_misses l2d_cache_refill cache_misses"
 if [[ "$TARGET" == "x86" || "$TARGET" == "all" ]]; then
 
     echo ""; echo "=== x86 | Cross-Frequency | P-Core (cpu0) | SPEC 2017 ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu0/spec2017/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu0/spec2017/top2 --input_counters $X86_CF_CPU0_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu0/spec2017/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu0/spec2017/top2 --input_counters $X86_CF_CPU0_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu0/spec2017/top4 --input_counters $X86_CF_CPU0_TOP4
 
     echo ""; echo "=== x86 | Cross-Frequency | P-Core (cpu0) | SPEC 2026 ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu0/spec2026/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu0/spec2026/top2 --input_counters $X86_CF_CPU0_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu0/spec2026/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu0/spec2026/top2 --input_counters $X86_CF_CPU0_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu0/spec2026/top4 --input_counters $X86_CF_CPU0_TOP4
 
     echo ""; echo "=== x86 | Cross-Frequency | P-Core (cpu0) | DaCapo ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu0/dacapo/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu0/dacapo/top2 --input_counters $X86_CF_CPU0_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu0/dacapo/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu0/dacapo/top2 --input_counters $X86_CF_CPU0_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu0/dacapo/top4 --input_counters $X86_CF_CPU0_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-FREQUENCY — E-CORE (cpu16)
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Frequency | E-Core (cpu16) | SPEC 2017 ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu16/spec2017/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu16/spec2017/top2 --input_counters $X86_CF_CPU16_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu16/spec2017/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu16/spec2017/top2 --input_counters $X86_CF_CPU16_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CF/cpu16/spec2017/top4 --input_counters $X86_CF_CPU16_TOP4
 
     echo ""; echo "=== x86 | Cross-Frequency | E-Core (cpu16) | SPEC 2026 ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu16/spec2026/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu16/spec2026/top2 --input_counters $X86_CF_CPU16_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu16/spec2026/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu16/spec2026/top2 --input_counters $X86_CF_CPU16_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CF/cpu16/spec2026/top4 --input_counters $X86_CF_CPU16_TOP4
 
     echo ""; echo "=== x86 | Cross-Frequency | E-Core (cpu16) | DaCapo ==="
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu16/dacapo/full
-    python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu16/dacapo/top2 --input_counters $X86_CF_CPU16_TOP2
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu16/dacapo/full
+    # python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu16/dacapo/top2 --input_counters $X86_CF_CPU16_TOP2
     python3 $CF_X86 --data_dir $X86_DATA --target_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CF/cpu16/dacapo/top4 --input_counters $X86_CF_CPU16_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — P-Core → E-Core
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2017 ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top4 --input_counters $X86_CP_TOP4
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top2_matched --input_counters $X86_CP_MATCHED_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top2_matched --input_counters $X86_CP_MATCHED_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2017/top4_matched --input_counters $X86_CP_MATCHED_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2026 ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top4 --input_counters $X86_CP_TOP4
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top2_matched --input_counters $X86_CP_MATCHED_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top2_matched --input_counters $X86_CP_MATCHED_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/spec2026/top4_matched --input_counters $X86_CP_MATCHED_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | DaCapo ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top4 --input_counters $X86_CP_TOP4
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top2_matched --input_counters $X86_CP_MATCHED_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top2_matched --input_counters $X86_CP_MATCHED_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu0_to_cpu16/dacapo/top4_matched --input_counters $X86_CP_MATCHED_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — E-Core → P-Core
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2017 ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2017/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2026 ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/spec2026/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | DaCapo ==="
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP/cpu16_to_cpu0/dacapo/top4 --input_counters $X86_CP_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — P-Core → E-Core (100M)
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2017 (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2017/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2026 (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/spec2026/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | DaCapo (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu0_to_cpu16/dacapo/top4 --input_counters $X86_CP_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — E-Core → P-Core (100M)
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2017 (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2017/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2026 (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/spec2026/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | DaCapo (100M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_100M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_100M/cpu16_to_cpu0/dacapo/top4 --input_counters $X86_CP_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — P-Core → E-Core (1000M)
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2017 (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2017/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | SPEC 2026 (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/spec2026/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | P-Core → E-Core | DaCapo (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 0 --tgt_cpu 16 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu0_to_cpu16/dacapo/top4 --input_counters $X86_CP_TOP4
 
     # ===========================================================================
     # X86 DESKTOP — CROSS-PROCESSOR — E-Core → P-Core (1000M)
     # ===========================================================================
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2017 (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2017/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2017/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2017/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2017 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2017/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | SPEC 2026 (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2026/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2026/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2026/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite spec2026 --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/spec2026/top4 --input_counters $X86_CP_TOP4
 
     echo ""; echo "=== x86 | Cross-Processor | E-Core → P-Core | DaCapo (1000M) ==="
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/dacapo/full
-    python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/dacapo/full
+    # python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/dacapo/top2 --input_counters $X86_CP_TOP2
     python3 $CP_X86 --data_dir $X86_DATA_1000M --src_cpu 16 --tgt_cpu 0 --suite dacapo --strict_loocv --out_dir $X86_CP_1000M/cpu16_to_cpu0/dacapo/top4 --input_counters $X86_CP_TOP4
 
 fi

@@ -44,7 +44,7 @@ def add_feature_args(parser):
     g.add_argument("--rolling_window", type=int, default=0,
                    help="Rolling-mean window size applied to key rates. 0 = disabled.")
 
-    g.add_argument("--jobs", type=int, default=16,
+    g.add_argument("--jobs", type=int, default=2,
                    help="Parallel joblib workers")
     g.add_argument("--strict_loocv", action="store_true", default=True,
                    help="Group all phases of the same workload into the test set (default: on)")
@@ -110,8 +110,7 @@ def build_model(cat_features=None):
 
     Notes
     -----
-    * loss_function  = Quantile:alpha=0.65  (robust to outliers; slight upward bias
-                       compensates for log-space shrinkage)
+    * loss_function  = MAE                  (symmetric; no directional bias)
     * eval_metric    = LinearMAPE()         (human-readable; drives early stopping)
     * Target         = log(ratio)           — callers must log-transform before fit()
                        and exp() after predict().
@@ -123,7 +122,7 @@ def build_model(cat_features=None):
         iterations      = 1000,
         depth           = 5,
         learning_rate   = 0.03,
-        loss_function   = "Quantile:alpha=0.65",
+        loss_function   = "MAE",
         eval_metric     = LinearMAPE(),
         cat_features    = cat_features if cat_features else None,
         l2_leaf_reg     = 30,

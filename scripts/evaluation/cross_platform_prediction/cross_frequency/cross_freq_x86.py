@@ -113,11 +113,11 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 
         src_clean   = train_full["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_train = train_full["target_y"] / src_clean
-        y_train_log = np.log(np.clip(ratio_train, 0.05, 50.0))
+        y_train_log = np.log(np.clip(ratio_train, 0.2, 5.0))
 
         src_clean_t = test_df["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_test  = test_df["target_y"] / src_clean_t
-        y_test_log  = np.log(np.clip(ratio_test, 0.05, 50.0))
+        y_test_log  = np.log(np.clip(ratio_test, 0.2, 5.0))
 
         cat_feats = cat_feature_names(args)
         model = try_load_model(out_dir, test_bench)
