@@ -324,11 +324,23 @@ def main():
     parser.add_argument("--out_dir", default="../../../processed_data_10M/x86_server", help="Directory to save CSVs")
     parser.add_argument("--jobs",    type=int, default=os.cpu_count(), help="Number of parallel workers")
     parser.add_argument("--arch",    choices=["x86", "arm"], default="x86", help="Target architecture (default: x86)")
+    parser.add_argument("--freqs",  default=None, help="Comma-separated frequencies to process (e.g. 1.0,2.0)")
     args = parser.parse_args()
 
-    os.makedirs(args.out_dir, exist_ok=True)
+    files = glob.glob(os.path.join(args.raw_dir, "**/*.out"), recursive=True)
+    if args.freqs:
+        freq_set = set(args.freqs.split(','))
+        files = [f for f in files if any(f"_{freq}GHz_" in os.path.basename(f) for freq in freq_set)]
 
-    files = glob.glob(os.path.join(args.raw_dir, "*.out"))
+    file_tasks = []
+    suite_out_dirs = set()
+    for f in files:
+        rel_dir = os.path.relpath(os.path.dirname(f), args.raw_dir)
+        suite_out_dir = args.out_dir if rel_dir == '.' else os.path.join(args.out_dir, rel_dir)
+        os.makedirs(suite_out_dir, exist_ok=True)
+        file_tasks.append((f, suite_out_dir))
+        suite_out_dirs.add(suite_out_dir)
+
     print(f"Found {len(files)} raw files in {args.raw_dir}")
     print(f"Processing to {args.out_dir} using {args.jobs} workers (Arch: {args.arch})...")
 
@@ -336,7 +348,7 @@ def main():
     skipped = 0
 
     with ProcessPoolExecutor(max_workers=args.jobs) as executor:
-        futures = {executor.submit(process_single_file, f, args.out_dir, args.arch): f for f in files}
+        futures = {executor.submit(process_single_file, f, out, args.arch): f for f, out in file_tasks}
 
         for future in as_completed(futures):
             success, msg, outlier_messages = future.result()
@@ -354,7 +366,8 @@ def main():
 
     print(f"\nDone. Processed {count} files. Skipped {skipped}.")
 
-    align_csvs(args.out_dir)
+    for suite_dir in sorted(suite_out_dirs):
+        align_csvs(suite_dir)
 
 if __name__ == "__main__":
     main()

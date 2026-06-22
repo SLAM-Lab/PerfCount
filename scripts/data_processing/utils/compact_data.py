@@ -43,24 +43,23 @@ def main():
     # Create output directory
     os.makedirs(args.out_dir, exist_ok=True)
     
-    # Updated pattern: Specifically look for the aligned trace files
-    search_pattern = os.path.join(args.in_dir, "aligned_*.csv")
-    files = glob.glob(search_pattern)
-    
+    files = glob.glob(os.path.join(args.in_dir, "**/aligned_*.csv"), recursive=True)
+
     if not files:
         print(f"No matching 'aligned_*.csv' files found in '{args.in_dir}'.")
         return
 
     print(f"Found {len(files)} aligned traces. Compacting (block size = {args.block_size})...")
-    
+
     success_count = 0
     for f in files:
-        filename = os.path.basename(f)
-        out_path = os.path.join(args.out_dir, filename)
-        
+        rel_path = os.path.relpath(f, args.in_dir)
+        out_path = os.path.join(args.out_dir, rel_path)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
         if compact_csv(f, out_path, args.block_size):
             success_count += 1
-            
+
     print(f"Successfully compacted {success_count} / {len(files)} files into '{args.out_dir}'.")
     print("All output data has been strictly formatted as integers.")
 
