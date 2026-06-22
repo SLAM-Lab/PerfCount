@@ -25,41 +25,17 @@ from joblib import Parallel, delayed
 def add_feature_args(parser):
     """Attach the shared feature-toggle and model flags to an argparse parser."""
     g = parser.add_argument_group("Feature toggles")
-    g.add_argument("--use_mpki",           action="store_true", default=True,
-                   help="Include MPKI-normalised cache/branch/TLB counters (default: on)")
-    g.add_argument("--no_mpki",            dest="use_mpki", action="store_false")
 
-    g.add_argument("--use_miss_rates",     action="store_true", default=True,
-                   help="Include cache/branch/TLB miss-rate ratios (default: on)")
-    g.add_argument("--no_miss_rates",      dest="use_miss_rates", action="store_false")
-
-    g.add_argument("--use_stall_rates",    action="store_true", default=True,
-                   help="Include frontend/backend stall-per-cycle rates (default: on)")
-    g.add_argument("--no_stall_rates",     dest="use_stall_rates", action="store_false")
-
-    g.add_argument("--use_bottleneck_class", action="store_true", default=True,
-                   help="Include categorical bottleneck classifier (MoE gate, default: on)")
-    g.add_argument("--no_bottleneck_class",  dest="use_bottleneck_class", action="store_false")
-
-    g.add_argument("--rolling_window", type=int, default=0,
-                   help="Rolling-mean window size applied to key rates. 0 = disabled.")
+    g.add_argument("--input_counters", nargs="+", default=None,
+                   help="Restrict raw hardware counters used as features to this list "
+                        "(plus instructions/cpu_cycles/ref_cycles, always kept). "
+                        "Default: use all available counters.")
 
     g.add_argument("--jobs", type=int, default=8,
                    help="Parallel joblib workers")
     g.add_argument("--strict_loocv", action="store_true", default=True,
                    help="Group all phases of the same workload into the test set (default: on)")
     g.add_argument("--no_strict_loocv", dest="strict_loocv", action="store_false")
-
-    g.add_argument("--exclude_features", nargs="+", default=[],
-                   help="Feature names to drop from X after construction "
-                        "(e.g. ixb_stall_rate sx_stall_rate).")
-
-    g.add_argument("--input_counters", nargs="+", default=None,
-                   help="Restrict raw hardware counters available for feature "
-                        "construction to this list (plus instructions/cpu_cycles/"
-                        "ref_cycles, always kept). Derived features whose underlying "
-                        "counter is unavailable are silently skipped by build_features. "
-                        "Default: use all available counters.")
 
     g.add_argument("--equal_weight", action="store_true", default=False,
                    help="Weight training samples so every workload contributes equally "
@@ -140,58 +116,12 @@ def build_model(cat_features=None):
 # 3.  FEATURE ENGINEERING
 # =============================================================================
 
-# ---------------------------------------------------------------------------
-# 3a. Counter name maps — normalised base names shared across ARM and x86.
-#     Each entry is (numerator_base, denominator_base).
-#     Presence is checked dynamically; missing counters are silently skipped.
-# ---------------------------------------------------------------------------
-
-# Pairs used to compute miss rates  (num / denom)
-MISS_RATE_PAIRS = [
-    ("l1_dcache_load_misses",  "l1_dcache_loads",   "l1d_miss_rate"),
-    ("l1_dcache_load_misses",  "l1d_cache",         "l1d_miss_rate_alt"),   # ARM naming
-    ("l1_icache_load_misses",  "l1_icache_loads",   "l1i_miss_rate"),
-    ("l1_icache_load_misses",  "l1i_cache",         "l1i_miss_rate_alt"),
-    ("l2d_cache_refill",       "l2d_cache",         "l2d_miss_rate"),
-    ("l3d_cache_refill",       "l3d_cache",         "l3d_miss_rate"),
-    ("llc_misses",             "llc_loads",         "llc_miss_rate"),       # x86 naming
-    ("branch_misses",          "branches",          "branch_miss_rate"),
-    ("dtlb_load_misses",       "dtlb_loads",        "dtlb_miss_rate"),
-    ("dtlb_store_misses",      "dtlb_stores",       "dtlb_store_miss_rate"),
-    ("itlb_load_misses",       "itlb_loads",        "itlb_miss_rate"),
-    ("branch_load_misses",     "branch_loads",      "branch_load_miss_rate"),
-]
-
-# Counters whose per-1000-instruction rate we include for MPKI features
-MPKI_COUNTERS = [
-    "l1_dcache_load_misses",
-    "l1_icache_load_misses",
-    "l1d_cache_refill",
-    "l2d_cache_refill",
-    "l3d_cache_refill",
-    "llc_misses",           # x86
-    "branch_misses",
-    "dtlb_load_misses",
-    "itlb_load_misses",
-    "cache_misses",
-]
-
-# Stall counters normalised per cycle
-STALL_COUNTERS = [
-    "stalled_cycles_backend",
-    "stalled_cycles_frontend",
-    # Qualcomm/ARM fine-grained stalls
-    "bx_stall", "decode_stall", "dispatch_stall",
-    "fx_stall", "ixa_stall", "ixb_stall", "lx_stall", "sx_stall",
-]
-
 ALWAYS_KEEP_COUNTERS = ["instructions", "cpu_cycles", "ref_cycles"]
 
 
 def restrict_input_counters(df, suffix, input_counters):
     """Drop raw counter columns (with the given suffix) not in
-    ALWAYS_KEEP_COUNTERS or input_counters, so build_features() silently
-    skips derived features whose underlying counter was removed."""
+    ALWAYS_KEEP_COUNTERS or input_counters."""
     if not input_counters:
         return df
     keep = {f"{c}{suffix}" for c in ALWAYS_KEEP_COUNTERS} | \
@@ -200,120 +130,35 @@ def restrict_input_counters(df, suffix, input_counters):
     return df.drop(columns=drop_cols, errors="ignore")
 
 
-# Rolling window applied to these features (when --rolling_window > 0)
-ROLLING_FEATURE_NAMES = [
-    "ipc", "l1d_miss_rate", "l1d_miss_rate_alt",
-    "branch_miss_rate", "llc_miss_rate",
-    "backend_stall_rate", "frontend_stall_rate",
-    "l1d_mpki", "l3d_mpki", "branch_mpki",
-]
-
-
 def build_features(df, suffix, args):
     """
-    Build the unified physics-informed feature matrix from a DataFrame.
+    Extract raw hardware counter columns as the feature matrix.
 
     Parameters
     ----------
     df     : pd.DataFrame  — columns are already suffixed (e.g. 'instructions_src')
     suffix : str           — e.g. '_src' or '_tgt' or ''
-    args   : argparse.Namespace  — carries feature-toggle flags
+    args   : argparse.Namespace  — carries input_counters filter
 
     Returns
     -------
     X      : pd.DataFrame  — feature matrix (never contains NaN/Inf)
     """
-    X = pd.DataFrame(index=df.index)
+    counter_cols = [c for c in df.columns if c.endswith(suffix)] if suffix else list(df.columns)
+    counter_cols = [c for c in counter_cols if c not in ("sample_index", "target_y", "source_val")]
 
-    col_instr  = f"instructions{suffix}"
-    col_cycles = f"cpu_cycles{suffix}"
+    if not counter_cols:
+        return pd.DataFrame(index=df.index)
 
-    if col_instr not in df.columns or col_cycles not in df.columns:
-        return X  # caller handles empty
+    X = df[counter_cols].copy()
+    if suffix:
+        X.columns = [c[:-len(suffix)] for c in X.columns]
 
-    vec_instr  = df[col_instr].replace(0, np.nan)
-    vec_cycles = df[col_cycles].replace(0, np.nan)
-    inst_k     = vec_instr / 1000.0  # for MPKI denominator
-
-    # --- Always-on base rates ---
-    X["ipc"] = vec_instr / vec_cycles.fillna(1e-9)
-    X["cpi"] = vec_cycles / vec_instr.fillna(1e-9)
-
-    # x86: dynamic frequency ratio (actual / reference clock)
-    ref_col = f"ref_cycles{suffix}"
-    if ref_col in df.columns:
-        X["dynamic_freq_ratio"] = vec_cycles / df[ref_col].replace(0, np.nan).fillna(1e-9)
-
-    # --- MPKI features ---
-    if args.use_mpki:
-        for base in MPKI_COUNTERS:
-            col = f"{base}{suffix}"
-            if col in df.columns:
-                fname = base.replace("_load_misses", "").replace("_cache_refill", "") \
-                            .replace("_misses", "").replace("_", "") + "_mpki"
-                # use a deterministic name derived from base
-                fname = f"{base}_mpki"
-                X[fname] = df[col] / inst_k.fillna(1e-9)
-
-    # --- Miss-rate features ---
-    if args.use_miss_rates:
-        for num_base, den_base, feat_name in MISS_RATE_PAIRS:
-            num_col = f"{num_base}{suffix}"
-            den_col = f"{den_base}{suffix}"
-            if num_col in df.columns and den_col in df.columns:
-                den = df[den_col].replace(0, np.nan)
-                X[feat_name] = df[num_col] / den.fillna(1e-9)
-
-    # --- Stall-rate features ---
-    if args.use_stall_rates:
-        for base in STALL_COUNTERS:
-            col = f"{base}{suffix}"
-            if col in df.columns:
-                X[f"{base}_rate"] = df[col] / vec_cycles.fillna(1e-9)
-
-    # --- Clean up before rolling ---
-    X = X.replace([np.inf, -np.inf], 0).fillna(0)
-
-    # --- Bottleneck classifier (categorical MoE gate) ---
-    # Built from the cleaned MPKI columns so thresholds are stable
-    if args.use_bottleneck_class:
-        l3_mpki_col     = next((c for c in ["l3d_cache_refill_mpki", "llc_misses_mpki",
-                                             "cache_misses_mpki"] if c in X.columns), None)
-        branch_mpki_col = "branch_misses_mpki" if "branch_misses_mpki" in X.columns else None
-        l1i_mpki_col    = "l1_icache_load_misses_mpki" if "l1_icache_load_misses_mpki" in X.columns else None
-
-        l3_mpki     = X[l3_mpki_col]     if l3_mpki_col     else pd.Series(0, index=X.index)
-        branch_mpki = X[branch_mpki_col] if branch_mpki_col else pd.Series(0, index=X.index)
-        l1i_mpki    = X[l1i_mpki_col]    if l1i_mpki_col    else pd.Series(0, index=X.index)
-
-        conditions = [
-            (l3_mpki > 2.0),
-            (branch_mpki > 5.0) | (l1i_mpki > 10.0),
-        ]
-        choices = ["Memory_Bound", "Frontend_Bound"]
-        X["bottleneck_class"] = np.select(conditions, choices, default="Compute_Bound")
-
-    # --- Exclude specific features if requested ---
-    if hasattr(args, "exclude_features") and args.exclude_features:
-        X = X.drop(columns=[c for c in args.exclude_features if c in X.columns])
-
-    # --- Rolling window (applied in-place to selected rate columns) ---
-    if args.rolling_window > 0:
-        w = args.rolling_window
-        for feat in ROLLING_FEATURE_NAMES:
-            if feat in X.columns:
-                X[f"{feat}_roll{w}"] = (
-                    X[feat].rolling(window=w, min_periods=1).mean()
-                )
-
-    return X.fillna(0)
+    return X.replace([np.inf, -np.inf], 0).fillna(0)
 
 
 def cat_feature_names(args):
     """Return the list of categorical feature names active under current args."""
-    excluded = getattr(args, "exclude_features", []) or []
-    if args.use_bottleneck_class and "bottleneck_class" not in excluded:
-        return ["bottleneck_class"]
     return []
 
 

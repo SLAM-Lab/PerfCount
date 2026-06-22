@@ -328,9 +328,7 @@ def main():
     print(f"  src : {src_label}  ({os.path.abspath(args.src_data_dir)})")
     print(f"  tgt : {tgt_label}  ({os.path.abspath(args.tgt_data_dir)})")
     print(f"  suite          : {args.suite}  freq={args.freq or 'all'}")
-    print(f"  Feature flags  | mpki={args.use_mpki}  miss_rates={args.use_miss_rates}  "
-          f"stall_rates={args.use_stall_rates}  bottleneck={args.use_bottleneck_class}  "
-          f"rolling_window={args.rolling_window}")
+    print(f"  Features       | raw counters")
     print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}")
     print(f"{'='*60}\n")
 

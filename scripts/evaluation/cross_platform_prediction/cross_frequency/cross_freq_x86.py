@@ -3,34 +3,12 @@ cross_freq_x86.py
 =================
 Cross-frequency CPU-cycle prediction for x86 platforms (desktop heterogeneous).
 
-Uses the unified feature engineering and CatBoost model from shared_features.py.
-All feature toggles (--use_mpki, --use_miss_rates, --use_stall_rates,
---use_bottleneck_class, --rolling_window) are inherited from that module.
+Uses raw hardware counters and CatBoost model from shared_features.py.
 
 Typical usage
 -------------
-# All CPUs, all defaults
-python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86
-
-# DaCapo benchmarks only
 python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
-       --suite dacapo
-
-# SPEC benchmarks only
-python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
-       --suite spec
-
-# P-cores only (cpu0)
-python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
-       --target_cpu 0
-
-# E-cores only (cpu16)
-python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
-       --target_cpu 16
-
-# Strict LOOCV (no phase leakage)
-python cross_freq_x86.py --data_dir path/to/x86_desktop_heterogeneous --out_dir results/cf_x86 \\
-       --strict_loocv
+       --suite spec_2026 --target_cpu 0
 """
 
 import os
@@ -332,9 +310,7 @@ def main():
         return
     print(f"\n{'='*60}")
     print(f"  cross_freq_x86 | data: {os.path.abspath(args.data_dir)}")
-    print(f"  Feature flags  | mpki={args.use_mpki}  miss_rates={args.use_miss_rates}  "
-          f"stall_rates={args.use_stall_rates}  bottleneck={args.use_bottleneck_class}  "
-          f"rolling_window={args.rolling_window}")
+    print(f"  Features       | raw counters")
     print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}  suite={args.suite}  equal_weight={args.equal_weight}")
     print(f"{'='*60}\n")
 

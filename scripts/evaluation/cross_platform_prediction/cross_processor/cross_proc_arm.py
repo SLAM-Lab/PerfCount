@@ -303,9 +303,7 @@ def main():
     print(f"\n{'='*60}")
     print(f"  cross_proc_arm | data: {os.path.abspath(args.data_dir)}")
     print(f"  cpu{args.src_cpu} -> cpu{args.tgt_cpu}")
-    print(f"  Feature flags  | mpki={args.use_mpki}  miss_rates={args.use_miss_rates}  "
-          f"stall_rates={args.use_stall_rates}  bottleneck={args.use_bottleneck_class}  "
-          f"rolling_window={args.rolling_window}")
+    print(f"  Features       | raw counters")
     print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}  suite={args.suite}")
     print(f"{'='*60}\n")
 
