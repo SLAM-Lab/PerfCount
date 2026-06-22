@@ -56,7 +56,7 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    files = sorted(glob.glob(os.path.join(args.input_dir, 'aligned_*.csv')))
+    files = sorted(glob.glob(os.path.join(args.input_dir, '**', 'aligned_*.csv'), recursive=True))
     print(f"Found {len(files)} aligned_*.csv files in {args.input_dir}")
 
     idle_cache = {}
@@ -76,9 +76,12 @@ def main():
 
         key = (cpu, freq)
         if key not in idle_cache:
-            idle_csv = os.path.join(IDLE_DIR, f"idle_{cpu}_{freq}GHz_power.csv")
+            idle_name = f"idle_{cpu}_{freq}GHz_power.csv"
+            idle_csv = os.path.join(os.path.dirname(path), idle_name)
             if not os.path.exists(idle_csv):
-                print(f"  [SKIP] {fname}: no idle baseline {idle_csv}")
+                idle_csv = os.path.join(IDLE_DIR, idle_name)
+            if not os.path.exists(idle_csv):
+                print(f"  [SKIP] {fname}: no idle baseline {idle_name}")
                 n_skipped += 1
                 continue
             idle_cache[key] = get_idle_power(idle_csv)
@@ -126,7 +129,9 @@ def main():
                 'power_watts_total_block', 'power_watts_total_rolling_10']
         out = out[cols]
 
-        out_path = os.path.join(args.output_dir, fname)
+        rel_path = os.path.relpath(path, args.input_dir)
+        out_path = os.path.join(args.output_dir, rel_path)
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
         out.to_csv(out_path, index=False)
         n_written += 1
 

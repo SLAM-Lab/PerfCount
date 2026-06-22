@@ -76,7 +76,10 @@ def process_file(out_file, power_dir, aligned_dir, output_dir):
     base = out_file[:-len('.out')]
     power_csv = base + '_power.csv'
     sync_file = base + '_sync.txt'
-    idle_csv = os.path.join(power_dir, f'idle_{cpu}_{freq}GHz_power.csv')
+    idle_name = f'idle_{cpu}_{freq}GHz_power.csv'
+    idle_csv = os.path.join(os.path.dirname(out_file), idle_name)
+    if not os.path.exists(idle_csv):
+        idle_csv = os.path.join(power_dir, idle_name)
 
     if not (os.path.exists(power_csv) and os.path.exists(sync_file) and os.path.exists(idle_csv)):
         msgs.append(f"  [SKIP] {fname}: missing power/sync/idle file")
@@ -121,10 +124,11 @@ def process_file(out_file, power_dir, aligned_dir, output_dir):
                 'power_watts_total_block', f'power_watts_total_rolling_{ROLLING_N}']
         out_df = df_aligned[cols]
     else:
-        aligned_path = os.path.join(aligned_dir, out_name)
-        if not os.path.exists(aligned_path):
-            msgs.append(f"  [SKIP] {fname}: no matching aligned trace {aligned_path}")
+        matches = glob.glob(os.path.join(aligned_dir, '**', out_name), recursive=True)
+        if not matches:
+            msgs.append(f"  [SKIP] {fname}: no matching aligned trace {out_name} under {aligned_dir}")
             return 'skipped', msgs, None
+        aligned_path = matches[0]
 
         power_cols = df_aligned[
             ['sample_index', 'power_watts_block', f'power_watts_rolling_{ROLLING_N}',
@@ -169,7 +173,7 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    out_files = sorted(glob.glob(os.path.join(args.power_dir, 'cpu_*_*GHz_*_10000000_100_*.out')))
+    out_files = sorted(glob.glob(os.path.join(args.power_dir, '**', 'cpu_*_*GHz_*_10000000_100_*.out'), recursive=True))
     print(f"Found {len(out_files)} my_run=100 .out files in {args.power_dir}")
 
     n_written = 0
