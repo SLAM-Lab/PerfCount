@@ -44,7 +44,7 @@ def add_feature_args(parser):
     g.add_argument("--rolling_window", type=int, default=0,
                    help="Rolling-mean window size applied to key rates. 0 = disabled.")
 
-    g.add_argument("--jobs", type=int, default=2,
+    g.add_argument("--jobs", type=int, default=8,
                    help="Parallel joblib workers")
     g.add_argument("--strict_loocv", action="store_true", default=True,
                    help="Group all phases of the same workload into the test set (default: on)")

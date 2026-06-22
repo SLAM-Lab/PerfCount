@@ -145,7 +145,26 @@ _FILE_PATTERN = re.compile(
 )
 
 
-def load_platform_data(data_dir, cpu_id=None):
+def _resolve_suite_dirs(data_dir, suite):
+    """Return list of suite subdirectories to scan based on --suite flag."""
+    candidates = sorted(
+        d for d in os.listdir(data_dir)
+        if os.path.isdir(os.path.join(data_dir, d))
+    )
+    if not candidates:
+        return [data_dir]
+    if suite != "all":
+        return [os.path.join(data_dir, d) for d in candidates if d == suite]
+    has_c1 = "dacapo_c1" in candidates
+    dirs = []
+    for d in candidates:
+        if d == "dacapo_c2" and has_c1:
+            continue
+        dirs.append(os.path.join(data_dir, d))
+    return dirs
+
+
+def load_platform_data(data_dir, cpu_id=None, suite="all"):
     """
     Load all aligned_*.csv files from data_dir.
 
@@ -155,6 +174,8 @@ def load_platform_data(data_dir, cpu_id=None):
     cpu_id   : str or None
         If given, only load files whose cpu tag matches (e.g. '0', '4').
         If None, load all files regardless of cpu tag.
+    suite    : str
+        Suite directory to scan ('all', 'spec_2017', 'spec_2026', 'dacapo_c2', 'dacapo_c1').
 
     Returns
     -------
@@ -165,44 +186,30 @@ def load_platform_data(data_dir, cpu_id=None):
         print(f"[ERROR] Directory not found: {os.path.abspath(data_dir)}")
         return data_map
 
-    for fpath in glob.glob(os.path.join(data_dir, "aligned_*.csv")):
-        fname = os.path.basename(fpath)
-        m = _FILE_PATTERN.match(fname)
-        if not m:
-            continue
+    for suite_dir in _resolve_suite_dirs(data_dir, suite):
+        for fpath in glob.glob(os.path.join(suite_dir, "**", "aligned_*.csv"), recursive=True):
+            fname = os.path.basename(fpath)
+            m = _FILE_PATTERN.match(fname)
+            if not m:
+                continue
 
-        file_cpu = m.group("cpu")  # None if no cpu tag in filename
+            file_cpu = m.group("cpu")
 
-        # Apply cpu filter if requested
-        if cpu_id is not None and file_cpu != str(cpu_id):
-            continue
+            if cpu_id is not None and file_cpu != str(cpu_id):
+                continue
 
-        try:
-            df = pd.read_csv(fpath)
-            df.columns = [c.strip() for c in df.columns]
-            if "instructions" in df.columns and "cpu_cycles" in df.columns:
-                df = df[(df["instructions"] > 100_000) & (df["cpu_cycles"] > 0)]
-            if not df.empty:
-                key = (m.group("freq"), f"{m.group('bench')}_phase{m.group('phase')}")
-                data_map[key] = df
-        except Exception as e:
-            print(f"  [WARN] Could not load {fname}: {e}")
+            try:
+                df = pd.read_csv(fpath)
+                df.columns = [c.strip() for c in df.columns]
+                if "instructions" in df.columns and "cpu_cycles" in df.columns:
+                    df = df[(df["instructions"] > 100_000) & (df["cpu_cycles"] > 0)]
+                if not df.empty:
+                    key = (m.group("freq"), f"{m.group('bench')}_phase{m.group('phase')}")
+                    data_map[key] = df
+            except Exception as e:
+                print(f"  [WARN] Could not load {fname}: {e}")
 
     return data_map
-
-
-def filter_suite(data_map, suite):
-    """
-    Restrict data_map to workloads belonging to the requested suite.
-
-    suite : "spec"   — keep only bench keys starting with 'spec_'
-            "dacapo" — keep only bench keys starting with 'dacapo_'
-            "all"    — no filtering
-    """
-    if suite == "all":
-        return data_map
-    prefix = f"{suite}_"
-    return {k: v for k, v in data_map.items() if k[1].startswith(prefix)}
 
 
 # =============================================================================
@@ -290,9 +297,9 @@ def main():
     parser.add_argument("--tgt_cpu", type=str, default=None,
                         help="Target CPU ID filter (e.g. '4' for edge OoO). "
                              "Omit to load all CPUs.")
-    parser.add_argument("--suite", choices=["spec", "dacapo", "all"], default="spec",
-                        help="Workload suite filter: 'spec' (default), 'dacapo', or 'all'. "
-                             "Use 'spec' when one platform is arm_edge (no DaCapo data).")
+    parser.add_argument("--suite", choices=["all", "spec_2017", "spec_2026", "dacapo_c2", "dacapo_c1"], default="spec_2017",
+                        help="Benchmark suite to include: "
+                             "'all', 'spec_2017' (default), 'spec_2026', 'dacapo_c2', or 'dacapo_c1'.")
     parser.add_argument("--freq", type=str, default=None,
                         help="Run only the matched frequency pair at this value "
                              "(e.g. '1.0' to run only 1.0 GHz -> 1.0 GHz). "
@@ -327,8 +334,8 @@ def main():
     print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}")
     print(f"{'='*60}\n")
 
-    src_map = filter_suite(load_platform_data(args.src_data_dir, cpu_id=args.src_cpu), args.suite)
-    tgt_map = filter_suite(load_platform_data(args.tgt_data_dir, cpu_id=args.tgt_cpu), args.suite)
+    src_map = load_platform_data(args.src_data_dir, cpu_id=args.src_cpu, suite=args.suite)
+    tgt_map = load_platform_data(args.tgt_data_dir, cpu_id=args.tgt_cpu, suite=args.suite)
 
     if not src_map:
         print(f"[ERROR] No data loaded from src: {args.src_data_dir}")

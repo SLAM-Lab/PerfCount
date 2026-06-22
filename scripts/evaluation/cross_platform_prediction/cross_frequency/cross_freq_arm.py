@@ -172,7 +172,26 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 # 2.  DATA LOADING
 # =============================================================================
 
-def load_arm_data(data_dir, target_cpu=None):
+def _resolve_suite_dirs(data_dir, suite):
+    """Return list of suite subdirectories to scan based on --suite flag."""
+    candidates = sorted(
+        d for d in os.listdir(data_dir)
+        if os.path.isdir(os.path.join(data_dir, d))
+    )
+    if not candidates:
+        return [data_dir]
+    if suite != "all":
+        return [os.path.join(data_dir, d) for d in candidates if d == suite]
+    has_c1 = "dacapo_c1" in candidates
+    dirs = []
+    for d in candidates:
+        if d == "dacapo_c2" and has_c1:
+            continue
+        dirs.append(os.path.join(data_dir, d))
+    return dirs
+
+
+def load_arm_data(data_dir, target_cpu=None, suite="all"):
     """
     Scan data_dir for aligned_*.csv files following ARM naming convention:
         aligned_<bench>_<freq>GHz[_cpu<N>]_phase<P>.csv
@@ -191,24 +210,24 @@ def load_arm_data(data_dir, target_cpu=None):
         r"(?:_cpu(?P<cpu>\d+))?_phase(?P<phase>\d+)\.csv"
     )
 
-    for fpath in glob.glob(os.path.join(data_dir, "aligned_*.csv")):
-        fname = os.path.basename(fpath)
-        m = pattern.match(fname)
-        if not m:
-            continue
-        if target_cpu is not None and m.group("cpu") != str(target_cpu):
-            continue
-        try:
-            df = pd.read_csv(fpath)
-            df.columns = [c.strip() for c in df.columns]
-            # Basic sanity filter
-            if "instructions" in df.columns and "cpu_cycles" in df.columns:
-                df = df[(df["instructions"] > 100_000) & (df["cpu_cycles"] > 0)]
-            if not df.empty:
-                key = (m.group("freq"), f"{m.group('bench')}_phase{m.group('phase')}")
-                data_map[key] = df
-        except Exception as e:
-            print(f"  [WARN] Could not load {fname}: {e}")
+    for suite_dir in _resolve_suite_dirs(data_dir, suite):
+        for fpath in glob.glob(os.path.join(suite_dir, "**", "aligned_*.csv"), recursive=True):
+            fname = os.path.basename(fpath)
+            m = pattern.match(fname)
+            if not m:
+                continue
+            if target_cpu is not None and m.group("cpu") != str(target_cpu):
+                continue
+            try:
+                df = pd.read_csv(fpath)
+                df.columns = [c.strip() for c in df.columns]
+                if "instructions" in df.columns and "cpu_cycles" in df.columns:
+                    df = df[(df["instructions"] > 100_000) & (df["cpu_cycles"] > 0)]
+                if not df.empty:
+                    key = (m.group("freq"), f"{m.group('bench')}_phase{m.group('phase')}")
+                    data_map[key] = df
+            except Exception as e:
+                print(f"  [WARN] Could not load {fname}: {e}")
 
     return data_map
 
@@ -217,15 +236,6 @@ def load_arm_data(data_dir, target_cpu=None):
 # 3.  FREQUENCY-PAIR RUNNER
 # =============================================================================
 
-def _suite_prefix(bench_name):
-    """Return 'dacapo', 'spec', or 'other' for a bench_phase key."""
-    if bench_name.startswith("dacapo_"):
-        return "dacapo"
-    if bench_name.startswith("spec_"):
-        return "spec"
-    return "other"
-
-
 def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
     """
     Build and evaluate LOOCV for one (src_freq -> tgt_freq) direction.
@@ -233,9 +243,6 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
     benches_at_src = {k[1] for k in data_map if k[0] == src_freq}
     benches_at_tgt = {k[1] for k in data_map if k[0] == tgt_freq}
     common = sorted(benches_at_src & benches_at_tgt)
-
-    if args.suite != "all":
-        common = [b for b in common if _suite_prefix(b) == args.suite]
 
     if len(common) < 2:
         print(f"  Skipping {src_freq}->{tgt_freq}: only {len(common)} common workload(s).")
@@ -301,9 +308,9 @@ def main():
     parser.add_argument("--target_cpu", type=str, default=None,
                         help="Filter to a specific CPU ID (e.g. '1' for Edge In-Order). "
                              "Leave unset to use all CPUs in the directory.")
-    parser.add_argument("--suite", choices=["all", "dacapo", "spec"], default="all",
+    parser.add_argument("--suite", choices=["all", "spec_2017", "spec_2026", "dacapo_c2", "dacapo_c1"], default="all",
                         help="Benchmark suite to include in LOOCV folds: "
-                             "'all' (default), 'dacapo', or 'spec'.")
+                             "'all' (default), 'spec_2017', 'spec_2026', 'dacapo_c2', or 'dacapo_c1'.")
     add_feature_args(parser)
     parser.add_argument("--force", action="store_true", default=False,
                         help="Re-run even if grand_summary.csv already exists in --out_dir.")
@@ -322,7 +329,7 @@ def main():
     print(f"  LOOCV          | strict={args.strict_loocv}  jobs={args.jobs}  suite={args.suite}  equal_weight={args.equal_weight}")
     print(f"{'='*60}\n")
 
-    data_map = load_arm_data(args.data_dir, target_cpu=args.target_cpu)
+    data_map = load_arm_data(args.data_dir, target_cpu=args.target_cpu, suite=args.suite)
     if not data_map:
         print("[ERROR] No data loaded. Check --data_dir and file naming.")
         return
