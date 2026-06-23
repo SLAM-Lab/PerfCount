@@ -48,12 +48,6 @@ FREQS = [1.0, 2.0, 3.0, 4.0]
 
 def make_feature_args():
     return argparse.Namespace(
-        use_mpki=True,
-        use_miss_rates=True,
-        use_stall_rates=True,
-        use_bottleneck_class=True,
-        exclude_features=[],
-        rolling_window=0,
         input_counters=None,
     )
 
@@ -65,12 +59,12 @@ def find_workloads(p_to_e_model_dir):
 
 
 def find_phases(pmu_dir, bench, freq, core_suffix):
-    """Return sorted phase indices for (bench, freq, core_suffix='cpu0'|'cpu16')."""
-    phases = []
-    for f in sorted(Path(pmu_dir).glob(
+    """Return dict mapping phase index -> file Path for (bench, freq, core_suffix)."""
+    phase_map = {}
+    for f in sorted(Path(pmu_dir).rglob(
             f"aligned_{bench}_{freq:.1f}GHz_{core_suffix}_phase*.csv")):
-        phases.append(int(f.stem.rsplit("phase", 1)[-1]))
-    return phases
+        phase_map[int(f.stem.rsplit("phase", 1)[-1])] = f
+    return phase_map
 
 
 def load_oracle_speedups(oracle_dir, bench, ph, src_core, src_freq, tgt_core):
@@ -113,9 +107,8 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
         if not models:
             continue
 
-        phases = find_phases(pmu_dir, bench, src_freq, core_suffix[0])
-        for ph in phases:
-            pmu_file = pmu_dir / f"aligned_{bench}_{src_ghz}_{core_suffix[0]}_phase{ph}.csv"
+        phase_map = find_phases(pmu_dir, bench, src_freq, core_suffix[0])
+        for ph, pmu_file in sorted(phase_map.items()):
             try:
                 df_pmu = pd.read_csv(pmu_file)
             except Exception as e:
@@ -158,7 +151,7 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
     return mapes
 
 
-_ALL_SUITES = ['spec2017', 'spec2026', 'dacapo']
+_ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
 def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None):

@@ -51,12 +51,6 @@ _CPU_ID = {'P': 'cpu0', 'E': 'cpu16'}
 def make_feature_args():
     import argparse
     ns = argparse.Namespace(
-        use_mpki=True,
-        use_miss_rates=True,
-        use_stall_rates=True,
-        use_bottleneck_class=True,
-        exclude_features=[],
-        rolling_window=0,
         input_counters=None,
     )
     return ns
@@ -73,15 +67,14 @@ def find_workloads(model_dir):
 
 
 def find_phases(pmu_dir, bench, src_freq, cpu_id):
-    """Return sorted phase indices that have an aligned CSV for (bench, src_freq)."""
+    """Return dict mapping phase index -> file Path for (bench, src_freq)."""
     pat = f"aligned_{bench}_{src_freq:.1f}GHz_{cpu_id}_phase*.csv"
-    files = sorted(Path(pmu_dir).glob(pat))
-    phases = []
+    files = sorted(Path(pmu_dir).rglob(pat))
+    phase_map = {}
     for f in files:
-        stem = f.stem
-        ph_str = stem.rsplit("phase", 1)[-1]
-        phases.append(int(ph_str))
-    return phases
+        ph_str = f.stem.rsplit("phase", 1)[-1]
+        phase_map[int(ph_str)] = f
+    return phase_map
 
 
 def load_oracle_speedups(oracle_dir, bench, ph, src_freq, prefix):
@@ -154,13 +147,12 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
             if not models:
                 continue
 
-            phases = find_phases(pmu_dir, bench, src_freq, cpu_id)
-            if not phases:
+            phase_map = find_phases(pmu_dir, bench, src_freq, cpu_id)
+            if not phase_map:
                 print(f"  [WARN] No aligned CSVs for {bench} @ {src_ghz}")
                 continue
 
-            for ph in phases:
-                pmu_file = pmu_dir / f"aligned_{bench}_{src_ghz}_{cpu_id}_phase{ph}.csv"
+            for ph, pmu_file in sorted(phase_map.items()):
                 try:
                     df_pmu = pd.read_csv(pmu_file)
                 except Exception as e:
@@ -221,7 +213,7 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
     print("Done.")
 
 
-_ALL_SUITES = ['spec2017', 'spec2026', 'dacapo']
+_ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
 def main():
