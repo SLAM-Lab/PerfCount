@@ -45,7 +45,7 @@ def discover_freqs(data_dir, cpu_id=None):
     """Return sorted list of frequency strings found in data_dir."""
     pattern = re.compile(r"aligned_.+?_([\d.]+)GHz")
     freqs = set()
-    for fpath in glob.glob(os.path.join(data_dir, "aligned_*.csv")):
+    for fpath in glob.glob(os.path.join(data_dir, "**", "aligned_*.csv"), recursive=True):
         fname = os.path.basename(fpath)
         if cpu_id is not None and f"_cpu{cpu_id}_" not in fname:
             continue
@@ -58,10 +58,10 @@ def discover_freqs(data_dir, cpu_id=None):
 def glob_files(data_dir, freq, cpu_id=None):
     """Return CSV paths for a given frequency (and optionally a cpu ID)."""
     if cpu_id is not None:
-        pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz_cpu{cpu_id}_phase*.csv")
+        pattern = os.path.join(data_dir, "**", f"aligned_*_{freq}GHz_cpu{cpu_id}_phase*.csv")
     else:
-        pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz*phase*.csv")
-    return glob.glob(pattern)
+        pattern = os.path.join(data_dir, "**", f"aligned_*_{freq}GHz*phase*.csv")
+    return glob.glob(pattern, recursive=True)
 
 
 def load_data(files, sample_every=10):

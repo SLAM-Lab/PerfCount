@@ -47,9 +47,9 @@ def get_all_jobs():
             os.path.join(SCRIPT_DIR, f"../../../../../processed_data_{gran}/{MACHINE}")
         )
         for freq in FREQS:
-            pattern = os.path.join(data_dir, f"aligned_{SUITE}_*_{freq}GHz_cpu{CPU}_phase*.csv")
+            pattern = os.path.join(data_dir, "**", f"aligned_{SUITE}_*_{freq}GHz_cpu{CPU}_phase*.csv")
             workloads = sorted(set(
-                os.path.basename(f).replace('.csv', '') for f in glob.glob(pattern)
+                os.path.basename(f).replace('.csv', '') for f in glob.glob(pattern, recursive=True)
             ))
             for m in MODELS:
                 for w in workloads:

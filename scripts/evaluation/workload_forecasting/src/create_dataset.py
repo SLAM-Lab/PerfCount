@@ -17,12 +17,13 @@ def get_raw_data(args):
     # 1. Dynamically find the PerfCount root directory (4 folders up from src/create_dataset.py)
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
     
-    # 2. Build the exact path to our new processed data
-    file_path = os.path.join(root_dir, 'processed_data_10M', args.dataset, f"{args.benchmark}.csv")
-    
-    if not os.path.exists(file_path):
-        print(f"[ERROR] Could not find dataset at: {file_path}")
+    # 2. Find the benchmark CSV recursively under the processed data directory
+    data_dir = os.path.join(root_dir, 'processed_data_10M', args.dataset)
+    matches = glob.glob(os.path.join(data_dir, "**", f"{args.benchmark}.csv"), recursive=True)
+    if not matches:
+        print(f"[ERROR] Could not find {args.benchmark}.csv under: {data_dir}")
         return None
+    file_path = matches[0]
         
     # 3. Load the data
     df = pd.read_csv(file_path)
@@ -70,9 +71,9 @@ def _find_donor_files(args, columns):
     rest, cur_freq, cur_cpu, phase = m.group('rest'), m.group('freq'), m.group('cpu'), m.group('phase')
     data_dir = _get_data_dir(args)
 
-    pattern = os.path.join(data_dir, f"aligned_{rest}_*GHz_cpu*_phase{phase}.csv")
+    pattern = os.path.join(data_dir, "**", f"aligned_{rest}_*GHz_cpu*_phase{phase}.csv")
     donors = []
-    for fpath in glob.glob(pattern):
+    for fpath in glob.glob(pattern, recursive=True):
         name = os.path.basename(fpath).replace('.csv', '')
         dm = BENCHMARK_NAME_RE.match(name)
         if not dm:

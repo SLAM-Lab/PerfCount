@@ -76,8 +76,8 @@ def get_all_jobs():
             os.path.join(SCRIPT_DIR, f"../../../../../processed_data_{gran}/{MACHINE}")
         )
         for freq in FREQS:
-            pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz_cpu{CPU}_phase*.csv")
-            for fpath in sorted(glob.glob(pattern)):
+            pattern = os.path.join(data_dir, "**", f"aligned_*_{freq}GHz_cpu{CPU}_phase*.csv")
+            for fpath in sorted(glob.glob(pattern, recursive=True)):
                 name = os.path.basename(fpath).replace('.csv', '')
                 bm = BENCHMARK_NAME_RE.match(name)
                 if not bm:

@@ -100,7 +100,7 @@ def compute_stats_for_dir(data_dir):
     Returns a DataFrame with one row per (workload_base, freq, cpu).
     """
     machine = _machine_name(data_dir)
-    files = sorted(glob.glob(os.path.join(data_dir, "aligned_*.csv")))
+    files = sorted(glob.glob(os.path.join(data_dir, "**", "aligned_*.csv"), recursive=True))
     if not files:
         print(f"  [WARN] No aligned_*.csv files in {data_dir}")
         return pd.DataFrame()
