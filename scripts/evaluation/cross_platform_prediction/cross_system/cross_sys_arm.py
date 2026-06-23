@@ -74,10 +74,9 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         if X_train.empty or X_test.empty:
             return None
 
-        for c in X_train.columns:
-            if c not in X_test.columns:
-                X_test[c] = 0
-        X_test = X_test[X_train.columns]
+        common_cols = sorted(set(X_train.columns) & set(X_test.columns))
+        X_train = X_train[common_cols]
+        X_test = X_test[common_cols]
 
         src_clean   = train_full["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_train = train_full["target_y"] / src_clean
