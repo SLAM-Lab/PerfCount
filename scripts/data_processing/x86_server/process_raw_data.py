@@ -28,7 +28,7 @@ def clean_event_name(raw_event):
 
     name = name.lower()
 
-    # Mapping for x86 server PMU counters (runs 0-12 of x86_server.cfg)
+    # Mapping for x86 server PMU counters (10 groups, runs 0-9)
     mapping = {
         'instructions':                              'instructions',
         'cpu-cycles':                                'cpu_cycles',
@@ -69,7 +69,6 @@ def clean_event_name(raw_event):
 
         'node-loads':                                'node_loads',
         'node-load-misses':                          'node_load_misses',
-        'slots':                                     'slots',
 
         'page-faults':                               'page_faults',
         'minor-faults':                              'minor_faults',
