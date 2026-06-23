@@ -21,7 +21,7 @@ if __name__ == "__main__":
         f.write("#!/bin/bash\n\n")
         count = 0
 
-        for run_number in range(0, 13):
+        for run_number in range(0, 10):
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
@@ -42,4 +42,4 @@ if __name__ == "__main__":
 
     print(f"Generated {output_file} with {count} SPEC commands "
           f"({len(spec_benchmarks)} benchmarks × {len(frequencies)} freq × "
-          f"{len(cpus)} cpu × 13 runs).")
+          f"{len(cpus)} cpu × 10 runs).")

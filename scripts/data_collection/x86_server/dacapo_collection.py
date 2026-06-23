@@ -20,28 +20,26 @@ if __name__ == "__main__":
 
     dacapo_benchmarks = strict_benchmarks + relaxed_benchmarks
 
-    frequencies = ["1.0", "2.0", "3.0"]
+    frequencies = ["3.0"]
     cpus = [0]
     dacapo_dir = "../../../benchmarks/dacapo"
 
     # Strict Flags (Maximum Determinism for x86)
     strict_flags = (
-        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
+        "-Xcomp -Xbatch -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData -XX:-UseTLAB "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
     )
 
-    # Relaxed Flags (Removed UseTLAB to prevent framework crashes)
     relaxed_flags = (
-        "-Xcomp -Xbatch -XX:-TieredCompilation -XX:CICompilerCount=1 "
-        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC -XX:+AlwaysPreTouch "
+        "-Xcomp -Xbatch -XX:+TieredCompilation -XX:TieredStopAtLevel=1 -XX:CICompilerCount=1 "
+        "-XX:+UnlockExperimentalVMOptions -XX:+UseSerialGC "
         "-Xms16g -Xmx16g -XX:InitialCodeCacheSize=256m -XX:ReservedCodeCacheSize=256m "
         "-XX:+DisableExplicitGC -XX:-UseBiasedLocking -XX:-UsePerfData "
         "-XX:+UnlockDiagnosticVMOptions -XX:GuaranteedSafepointInterval=0"
-    )
-
+    )   
     # 11 Hardware Counter Groups matching x86_server.cfg (runs 0-10)
     x86_groups = [
         "{instructions,cpu-cycles,bus-cycles,fp_arith_inst_retired.scalar_single}:uS",

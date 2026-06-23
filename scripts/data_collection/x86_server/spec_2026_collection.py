@@ -17,7 +17,7 @@ if __name__ == "__main__":
 
     spec_benchmarks = intrate_benchmarks + fprate_benchmarks #+ intspeed_benchmarks + fpspeed_benchmarks
 
-    frequencies = ["1.0", "2.0", "3.0"]
+    frequencies = ["3.0"]
     cpus = [0]
     spec_dir = "../../../benchmarks/spec_2026"
 
