@@ -116,6 +116,28 @@ E_NRG_J = {
     (4.0, 1.0): 0.0002,   (4.0, 2.0): 0.000132, (4.0, 3.0): 9.7e-05,
 }
 
+# --- ARM big.LITTLE (Qualcomm RB5 / Snapdragon 865) placeholder parameters ---
+# L = Little (Silver, Cortex-A55), B = Big (Gold, Cortex-A76)
+# These are estimates; replace with measured values when available.
+ARM_WARMUP_A_BtoL   = 0.20
+ARM_WARMUP_TAU_BtoL = 0.4
+ARM_WARMUP_A_LtoB   = 0.12
+ARM_WARMUP_TAU_LtoB = 0.3
+ARM_WARMUP_K        = 10
+
+ARM_MIG_LAT_S  = 5.0e-6
+ARM_MIG_NRG_J  = {
+    (1.0, 1.0): 5.0e-06,
+}
+ARM_DVFS_LAT_S = 5.0e-6
+ARM_DVFS_NRG_J = 2e-5
+
+ARM_L_LAT_US = {}
+ARM_L_NRG_J  = {}
+ARM_B_LAT_US = {}
+ARM_B_NRG_J  = {}
+
+
 def get_dvfs_cost(start_cfg, end_cfg):
     """Calculates true Latency (s) and Energy (J) for a specific frequency hop."""
     s_type, s_freq_str = start_cfg.split('_')
@@ -130,8 +152,8 @@ def get_dvfs_cost(start_cfg, end_cfg):
     # Clamp bounds to 4.0GHz for safety (prevents crashes on P_5.0GHz evaluation)
     s_freq, e_freq = min(s_freq, 4.0), min(e_freq, 4.0)
         
-    lat_map = P_LAT_US if s_type == 'P' else E_LAT_US
-    nrg_map = P_NRG_J if s_type == 'P' else E_NRG_J
+    lat_map = {'P': P_LAT_US, 'E': E_LAT_US, 'B': ARM_B_LAT_US, 'L': ARM_L_LAT_US}[s_type]
+    nrg_map = {'P': P_NRG_J, 'E': E_NRG_J, 'B': ARM_B_NRG_J, 'L': ARM_L_NRG_J}[s_type]
     
     # Fallback to defaults if a missing transition is requested
     lat_us = lat_map.get((s_freq, e_freq), DVFS_LAT_S * 1e6)
@@ -142,15 +164,23 @@ def get_dvfs_cost(start_cfg, end_cfg):
     return lat_s, nrg_j
 
 def get_migration_cost(start_cfg, end_cfg):
-    """Calculates Latency (s) and Energy (J) for a P<->E core migration."""
+    """Calculates Latency (s) and Energy (J) for a cross-cluster migration."""
     s_type, s_freq_str = start_cfg.split('_')
     e_type, e_freq_str = end_cfg.split('_')
 
+    if s_type in ('L', 'B'):
+        b_freq_str = s_freq_str if s_type == 'B' else e_freq_str
+        l_freq_str = e_freq_str if s_type == 'B' else s_freq_str
+        b_freq = float(b_freq_str.replace('GHz', ''))
+        l_freq = float(l_freq_str.replace('GHz', ''))
+        nrg_j = ARM_MIG_NRG_J.get((b_freq, l_freq), ARM_DVFS_NRG_J)
+        return ARM_MIG_LAT_S, nrg_j
+
     p_freq_str = s_freq_str if s_type == 'P' else e_freq_str
-    e_freq_str = e_freq_str if s_type == 'P' else s_freq_str
+    e_freq_str_val = e_freq_str if s_type == 'P' else s_freq_str
 
     p_freq = min(float(p_freq_str.replace('GHz', '')), 4.0)
-    e_freq = min(float(e_freq_str.replace('GHz', '')), 4.0)
+    e_freq = min(float(e_freq_str_val.replace('GHz', '')), 4.0)
 
     nrg_j = MIG_NRG_J.get((p_freq, e_freq), DVFS_NRG_J)
     return MIG_LAT_S, nrg_j
@@ -459,6 +489,8 @@ def main():
                              "in-band, exposing the reactive vs oracle gap at transitions. "
                              "Results are labeled Phase='all'. Use a separate --output_dir "
                              "to avoid mixing with per-phase results.")
+    parser.add_argument('--arch', type=str, default='x86', choices=['x86', 'arm_edge'],
+                        help="Target architecture: 'x86' (P/E cores) or 'arm_edge' (L/B cores)")
     args = parser.parse_args()
 
     import pandas as pd
@@ -473,9 +505,13 @@ def main():
     if viterbi_cache_dir is not None:
         viterbi_cache_dir.mkdir(parents=True, exist_ok=True)
 
-    pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
+    if args.arch == 'arm_edge':
+        pattern = re.compile(r"speedups_([LB]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
+        configs = ['L_1.0GHz', 'B_1.0GHz']
+    else:
+        pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
+        configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
-    configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
 
     common_kwargs = dict(
         power_mode=args.power_mode,

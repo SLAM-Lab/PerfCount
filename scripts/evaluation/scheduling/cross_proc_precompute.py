@@ -44,6 +44,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "cross_platform_prediction
 from shared_features import build_features, try_load_model
 
 FREQS = [1.0, 2.0, 3.0, 4.0]
+ARM_FREQS = [1.0]
+
+_CPU_ID = {'P': 'cpu0', 'E': 'cpu16', 'L': 'cpu1', 'B': 'cpu4'}
 
 
 def make_feature_args():
@@ -154,7 +157,7 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
 _ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
-def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None):
+def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None, arch='x86'):
     if suites is None:
         suites = _ALL_SUITES
     feat_args = make_feature_args()
@@ -163,35 +166,47 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None):
     oracle_dir = Path(oracle_dir)
     out_dir = Path(out_dir)
 
+    if arch == 'arm_edge':
+        freqs = ARM_FREQS
+        big_type, little_type = 'B', 'L'
+        big_cpu, little_cpu = _CPU_ID['B'], _CPU_ID['L']
+    else:
+        freqs = FREQS
+        big_type, little_type = 'P', 'E'
+        big_cpu, little_cpu = _CPU_ID['P'], _CPU_ID['E']
+
+    big_to_little_subdir = f"{big_cpu}_to_{little_cpu}"
+    little_to_big_subdir = f"{little_cpu}_to_{big_cpu}"
+
     bench_to_dirs = {}
     for suite in suites:
-        p_to_e_dir = model_dir / "cpu0_to_cpu16" / suite / "full"
-        e_to_p_dir = model_dir / "cpu16_to_cpu0" / suite / "full"
-        if not p_to_e_dir.exists():
-            print(f"[WARN] P->E model dir not found for suite '{suite}': {p_to_e_dir}")
+        b2l_dir = model_dir / big_to_little_subdir / suite / "full"
+        l2b_dir = model_dir / little_to_big_subdir / suite / "full"
+        if not b2l_dir.exists():
+            print(f"[WARN] {big_type}->{little_type} model dir not found for suite '{suite}': {b2l_dir}")
             continue
-        if not e_to_p_dir.exists():
-            print(f"[WARN] E->P model dir not found for suite '{suite}': {e_to_p_dir}")
+        if not l2b_dir.exists():
+            print(f"[WARN] {little_type}->{big_type} model dir not found for suite '{suite}': {l2b_dir}")
             continue
-        suite_benches = find_workloads(p_to_e_dir)
+        suite_benches = find_workloads(b2l_dir)
         print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
         for b in suite_benches:
-            bench_to_dirs[b] = (p_to_e_dir, e_to_p_dir)
+            bench_to_dirs[b] = (b2l_dir, l2b_dir)
 
     if not bench_to_dirs:
         print("No workloads found across any suite.")
         return
 
     all_mape = []
-    for bench, (p_to_e_dir, e_to_p_dir) in bench_to_dirs.items():
+    for bench, (b2l_dir, l2b_dir) in bench_to_dirs.items():
         bench_mapes = []
 
         bench_mapes += _process_direction(
-            bench, FREQS, 'P', 'E', p_to_e_dir, ('cpu0', 'cpu16'),
+            bench, freqs, big_type, little_type, b2l_dir, (big_cpu, little_cpu),
             pmu_dir, oracle_dir, out_dir, feat_args)
 
         bench_mapes += _process_direction(
-            bench, FREQS, 'E', 'P', e_to_p_dir, ('cpu16', 'cpu0'),
+            bench, freqs, little_type, big_type, l2b_dir, (little_cpu, big_cpu),
             pmu_dir, oracle_dir, out_dir, feat_args)
 
         if bench_mapes:
@@ -215,8 +230,10 @@ def main():
                         help="e.g. results/scheduling/cross_proc_predictions")
     parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
                         help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
+    parser.add_argument("--arch", default='x86', choices=['x86', 'arm_edge'],
+                        help="Target architecture (controls core types and frequencies)")
     args = parser.parse_args()
-    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir, args.suites)
+    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir, args.suites, args.arch)
 
 
 if __name__ == "__main__":

@@ -45,7 +45,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "cross_platform_prediction
 from shared_features import build_features, try_load_model
 
 FREQS = [1.0, 2.0, 3.0, 4.0]
-_CPU_ID = {'P': 'cpu0', 'E': 'cpu16'}
+ARM_FREQS = [1.0]
+_CPU_ID = {'P': 'cpu0', 'E': 'cpu16', 'L': 'cpu1', 'B': 'cpu4'}
 
 
 def make_feature_args():
@@ -97,7 +98,7 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_freq, prefix):
 
 
 def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
-                   suites=None):
+                   suites=None, arch='x86'):
     if suites is None:
         suites = ['spec2017']
     feat_args = make_feature_args()
@@ -105,8 +106,9 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
     pmu_dir = Path(pmu_dir)
     oracle_dir = Path(oracle_dir)
     out_dir = Path(out_dir)
-    prefix = core_type          # 'P' or 'E'
-    cpu_id = _CPU_ID[core_type] # 'cpu0' or 'cpu16'
+    prefix = core_type
+    cpu_id = _CPU_ID[core_type]
+    freqs = ARM_FREQS if arch == 'arm_edge' else FREQS
 
     bench_to_model_dir = {}
     for suite in suites:
@@ -127,8 +129,8 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
 
     for bench, model_dir in bench_to_model_dir.items():
         bench_mapes = []
-        for src_freq in FREQS:
-            tgt_freqs = [f for f in FREQS if f != src_freq]
+        for src_freq in freqs:
+            tgt_freqs = [f for f in freqs if f != src_freq]
             src_ghz = f"{src_freq:.1f}GHz"
             out_subdir = out_dir / f"speedups_from_{prefix}_{src_ghz}"
             out_subdir.mkdir(parents=True, exist_ok=True)
@@ -226,13 +228,15 @@ def main():
                         help="e.g. results/scheduling/speedup_full/granular_phase_traces")
     parser.add_argument("--out_dir",    required=True,
                         help="e.g. results/scheduling/cross_freq_predictions")
-    parser.add_argument("--core_type",  default='P', choices=['P', 'E'],
-                        help="Core type: P (cpu0, default) or E (cpu16)")
+    parser.add_argument("--core_type",  default='P', choices=['P', 'E', 'L', 'B'],
+                        help="Core type: P (cpu0), E (cpu16), L (cpu1, ARM Little), B (cpu4, ARM Big)")
+    parser.add_argument("--arch", default='x86', choices=['x86', 'arm_edge'],
+                        help="Target architecture (controls available frequencies)")
     parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
                         help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
     args = parser.parse_args()
     run_precompute(args.model_base_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
-                   args.core_type, args.suites)
+                   args.core_type, args.suites, args.arch)
 
 
 if __name__ == "__main__":

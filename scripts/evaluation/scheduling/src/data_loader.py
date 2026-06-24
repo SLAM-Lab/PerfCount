@@ -5,18 +5,27 @@ import numpy as np
 def get_power_w(config_str):
     power_map = {
         'P_1.0GHz': 0.58, 'P_2.0GHz': 2.14, 'P_3.0GHz': 5.50, 'P_4.0GHz': 13.17, 'P_5.0GHz': 29.77,
-        'E_1.0GHz': 0.44, 'E_2.0GHz': 1.38, 'E_3.0GHz': 4.70, 'E_4.0GHz': 16.89
+        'E_1.0GHz': 0.44, 'E_2.0GHz': 1.38, 'E_3.0GHz': 4.70, 'E_4.0GHz': 16.89,
+        'L_1.0GHz': 12.50, 'B_1.0GHz': 11.73, 'B_2.0GHz': 11.51,
     }
     return power_map.get(config_str, 10.0)
 
 P_MODEL_FREQS = [1.0, 2.0, 3.0, 4.0]
 E_MODEL_FREQS = [1.0, 2.0, 3.0, 4.0]
 
+ARM_L_MODEL_FREQS = [1.0]
+ARM_B_MODEL_FREQS = [1.0]
+
 # Source-config ordering for the cross-proc time tensor (axis 0).
 # E-cores first (indices 0-3), then P-cores (indices 4-7).
 ALL_MODEL_CONFIGS = [
     'E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz',
     'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz',
+]
+
+ARM_ALL_MODEL_CONFIGS = [
+    'L_1.0GHz',
+    'B_1.0GHz',
 ]
 
 

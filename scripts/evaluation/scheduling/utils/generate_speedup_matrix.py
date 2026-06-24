@@ -61,6 +61,8 @@ def main():
     parser = argparse.ArgumentParser(description="Generate workload-phase specific speedup files and a condensed average summary.")
     parser.add_argument('--input_dir', type=str, required=True, help="Path to the directory containing the trace CSVs")
     parser.add_argument('--output_dir', type=str, required=True, help="Directory where the result CSVs will be written")
+    parser.add_argument('--arch', type=str, default='x86', choices=['x86', 'arm_edge'],
+                         help="Target architecture: 'x86' (P/E cores) or 'arm_edge' (L/B cores)")
     parser.add_argument('--workers', type=int, default=1,
                          help="number of (workload, phase) groups to process in parallel (default 1)")
     args = parser.parse_args()
@@ -95,19 +97,21 @@ def main():
         cpu_id = match.group(3)
         phase = match.group(4) 
         
-        core_type = 'P' if cpu_id == '0' else 'E'
+        if args.arch == 'arm_edge':
+            core_type = 'L' if int(cpu_id) < 4 else 'B'
+        else:
+            core_type = 'P' if cpu_id == '0' else 'E'
         config_name = f"{core_type}_{freq_ghz}GHz"
-        
+
         try:
-            # Tell Pandas to load the ref_cycles column instead of cpu_cycles
             usecols = ['sample_index', 'ref_cycles']
             has_power = 'power_watts_total_block' in pd.read_csv(f, nrows=0).columns
             if has_power:
                 usecols.append('power_watts_total_block')
             df = pd.read_csv(f, usecols=usecols)
 
-            # Calculate generic time using ref_cycles (which ticks at a constant hardware frequency)
-            df['time_s'] = df['ref_cycles'] / 1e9
+            ref_divisor = 2e9 if args.arch == 'arm_edge' else 1e9
+            df['time_s'] = df['ref_cycles'] / ref_divisor
 
             df['workload'] = workload
             df['phase'] = phase
