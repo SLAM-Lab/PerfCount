@@ -12,8 +12,8 @@ if __name__ == "__main__":
     ]
     
     # Heterogeneous Edge Setup
-    frequencies = ["2.0"]
-    cpus = [4]
+    frequencies = ["1.0"]
+    cpus = [4, 1]
     spec_dir = "../../../benchmarks/spec"
 
     with open(output_file, "w") as f:
@@ -40,7 +40,7 @@ if __name__ == "__main__":
         f.write("\n")
         f.write("END_TIME=$(date)\n")
         f.write("HOSTNAME=$(hostname)\n")
-        f.write("echo \"SPEC Edge Data collection completed at $END_TIME on $HOSTNAME\" | mail -s \"SPEC Collection Complete\" -r \"mebarondeau@utexas.edu\" \"mebarondeau@utexas.edu\"\n")
+        f.write("echo \"SPEC Edge Data collection completed at $END_TIME on $HOSTNAME\" | mail -s \"SPEC Collection Complete\" \"mebarondeau@utexas.edu\"\n")
 
     st = os.stat(output_file)
     os.chmod(output_file, st.st_mode | stat.S_IEXEC)
