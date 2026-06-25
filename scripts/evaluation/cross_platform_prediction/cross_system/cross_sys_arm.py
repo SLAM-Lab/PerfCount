@@ -50,10 +50,13 @@ import pandas as pd
 from shared_features import (
     add_feature_args,
     build_features,
+    restrict_input_counters,
     build_model,
     cat_feature_names,
     prepare_bench_df,
     compute_metrics,
+    load_fold_if_done,
+    try_load_model,
     run_loocv,
     print_summary,
     save_feature_importance,
@@ -66,7 +69,14 @@ from shared_features import (
 
 def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="."):
     try:
+        cached = load_fold_if_done(out_dir, test_bench, freq_ratio)
+        if cached is not None:
+            return cached
+
         train_full = pd.concat(train_dfs, ignore_index=True)
+
+        train_full = restrict_input_counters(train_full, "_src", getattr(args, "input_counters", None))
+        test_df    = restrict_input_counters(test_df, "_src", getattr(args, "input_counters", None))
 
         X_train = build_features(train_full, suffix="_src", args=args)
         X_test  = build_features(test_df,    suffix="_src", args=args)
@@ -87,13 +97,14 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         y_test_log  = np.log(np.clip(ratio_test, 0.05, 50.0))
 
         cat_feats = cat_feature_names(args)
-        model     = build_model(cat_feats)
-
-        model.fit(
-            X_train, y_train_log,
-            eval_set=(X_test, y_test_log),
-            early_stopping_rounds=100,
-        )
+        model = try_load_model(out_dir, test_bench)
+        if model is None:
+            model = build_model(cat_feats)
+            model.fit(
+                X_train, y_train_log,
+                eval_set=(X_test, y_test_log),
+                early_stopping_rounds=200,
+            )
 
         importances = dict(zip(X_train.columns.tolist(), model.get_feature_importance()))
 
@@ -109,19 +120,16 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
         m_scale = compute_metrics(y_true_cycles, src_cycles * freq_ratio)
 
         os.makedirs(out_dir, exist_ok=True)
-        pd.DataFrame({
-            "source_val":       src_cycles,
-            "target_actual":    y_true_cycles,
-            "target_predicted": pred_cycles,
-            "ratio_actual":     test_df["target_y"].values / src_clean_t.values,
-            "ratio_predicted":  pred_ratio,
-        }).to_csv(os.path.join(out_dir, f"predictions_{test_bench}.csv"), index=False)
+        model.save_model(os.path.join(out_dir, f"model_{test_bench}.cbm"))
 
         return {
             "bench":               test_bench,
+            "wmape":               m_ml["wmape"],
             "mape":                m_ml["mape"],
             "mdape":               m_ml["mdape"],
+            "wmape_copy":          m_copy["wmape"],
             "mape_copy":           m_copy["mape"],
+            "wmape_scale":         m_scale["wmape"],
             "mape_scale":          m_scale["mape"],
             "feature_importances": importances,
         }
