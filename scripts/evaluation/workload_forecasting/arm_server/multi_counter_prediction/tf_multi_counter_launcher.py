@@ -55,8 +55,8 @@ def get_all_jobs():
         data_folder = "processed_data" if gran == "10M" else "processed_data_100M"
         data_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f"../../../../{data_folder}/{MACHINE}"))
         for freq in FREQS:
-            search_pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz_phase*.csv")
-            csv_files = glob.glob(search_pattern)
+            search_pattern = os.path.join(data_dir, "**", f"aligned_*_{freq}GHz_phase*.csv")
+            csv_files = glob.glob(search_pattern, recursive=True)
             workloads = sorted(list(set([os.path.basename(f).replace('.csv', '') for f in csv_files])))
             for m in MODELS:
                 for w in workloads:

@@ -56,8 +56,8 @@ def get_all_jobs():
         data_dir = os.path.abspath(os.path.join(SCRIPT_DIR, f"../../../../{data_folder}/{MACHINE}"))
         
         for freq in FREQS:
-            search_pattern = os.path.join(data_dir, f"aligned_*_{freq}GHz_phase*.csv")
-            csv_files = glob.glob(search_pattern)
+            search_pattern = os.path.join(data_dir, "**", f"aligned_*_{freq}GHz_phase*.csv")
+            csv_files = glob.glob(search_pattern, recursive=True)
             workloads = sorted(list(set([os.path.basename(f).replace('.csv', '') for f in csv_files])))
             
             target_counters = TARGET_COUNTERS_BY_FREQ.get(freq, [])

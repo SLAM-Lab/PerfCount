@@ -23,8 +23,8 @@ def main():
         print(f"[*] Analyzing Cross-Correlation for {freq} GHz")
         print(f"========================================")
         
-        search_pattern = os.path.join(DATA_DIR, f"aligned_*_{freq}GHz_phase*.csv")
-        csv_files = glob.glob(search_pattern)
+        search_pattern = os.path.join(DATA_DIR, "**", f"aligned_*_{freq}GHz_phase*.csv")
+        csv_files = glob.glob(search_pattern, recursive=True)
         
         if not csv_files:
             print(f"[-] Could not find raw data files at {search_pattern}. Skipping...")

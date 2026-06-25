@@ -4,13 +4,12 @@ import pandas as pd
 
 # --- CONFIGURATION ---
 # Set the directory where your aligned CSVs are stored
-DATA_DIR = os.path.expanduser("~/PerfCount/processed_data/arm_server")
+DATA_DIR = os.path.expanduser("~/PerfCount/processed_data_10M/arm_server")
 OUTPUT_FILE = os.path.join(DATA_DIR, "combined_aligned_traces.csv")
 
 def concatenate_traces():
-    # Find all CSV files that match your naming pattern
-    search_pattern = os.path.join(DATA_DIR, "*aligned*.csv")
-    csv_files = glob.glob(search_pattern)
+    search_pattern = os.path.join(DATA_DIR, "**", "*aligned*.csv")
+    csv_files = glob.glob(search_pattern, recursive=True)
     
     if not csv_files:
         print(f"No files found matching {search_pattern}")
