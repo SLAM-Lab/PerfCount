@@ -4,7 +4,7 @@ import os
 import stat
 
 if __name__ == "__main__":
-    output_file = "spec_collection.sh"
+    output_file = "spec_2017_collection.sh"
 
     spec_benchmarks = [
         500, 502, 505, 520, 523, 525, 531, 541, 548, 557,
@@ -16,24 +16,49 @@ if __name__ == "__main__":
     cpus = [4, 1]
     spec_dir = "../../../benchmarks/spec"
 
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    power_sampler = os.path.join(script_dir, "arm_power_sampler.py")
+
     with open(output_file, "w") as f:
         f.write("#!/bin/bash\n\n")
         count = 0
 
-        # --- SPEC 2017 Collection ---
-        for run_number in range(0, 25):  
+        # --- SPEC 2017 Counter Collection (runs 0-24) ---
+        for run_number in range(0, 25):
             for freq in frequencies:
                 for cpu in cpus:
                     for benchmark in spec_benchmarks:
                         command = "taskset --cpu-list " + str(cpu)
                         command += " bash -c 'cd " + spec_dir + " && source shrc && "
-                        command += "runcpu --config=arm_edge_heterogeneous " 
-                        command += "--define my_cpu=" + str(cpu) + " " 
-                        command += "--define my_freq=" + str(freq) + "GHz " 
-                        command += "--define my_run=" + str(run_number) + " " 
-                        command += str(benchmark) + "'" 
-                        f.write(command + "\n") 
+                        command += "runcpu --config=arm_edge_heterogeneous "
+                        command += "--define my_cpu=" + str(cpu) + " "
+                        command += "--define my_freq=" + str(freq) + "GHz "
+                        command += "--define my_run=" + str(run_number) + " "
+                        command += str(benchmark) + "'"
+                        f.write(command + "\n")
                         count += 1
+
+        # --- SPEC 2017 Power Collection (run 100) ---
+        for freq in frequencies:
+            for cpu in cpus:
+                # Idle power baseline
+                idle_base = f"/home/meb4744/PerfCount/idle_{cpu}_{freq}GHz"
+                f.write(f"python3 {power_sampler} {idle_base}_power.csv &\n")
+                f.write("IDLE_PID=$!\n")
+                f.write("sleep 10\n")
+                f.write("kill $IDLE_PID 2>/dev/null; wait $IDLE_PID 2>/dev/null\n")
+                count += 1
+
+                for benchmark in spec_benchmarks:
+                    command = "taskset --cpu-list " + str(cpu)
+                    command += " bash -c 'cd " + spec_dir + " && source shrc && "
+                    command += "runcpu --config=arm_edge_heterogeneous "
+                    command += "--define my_cpu=" + str(cpu) + " "
+                    command += "--define my_freq=" + str(freq) + "GHz "
+                    command += "--define my_run=100 "
+                    command += str(benchmark) + "'"
+                    f.write(command + "\n")
+                    count += 1
 
 
         # Email notification block
