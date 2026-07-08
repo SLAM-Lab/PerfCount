@@ -28,13 +28,24 @@ def set_preprocess_args(parser):
 												'collected at a different frequency/processor')
 	parser.add_argument('--heterogeneous_seed',	type=int, default=42,	help='Random seed controlling which training '\
 												'samples are replaced and which donor is used')
-	parser.add_argument('--heterogeneous_mode',	default='cross_freq', choices=['cross_freq', 'cross_proc'], help='Donor '\
-												'pool for heterogeneous history: cross_freq (same core, other frequency) '\
-												'or cross_proc (other core, any frequency)')
+	parser.add_argument('--heterogeneous_mode',	default='cross_freq', choices=['cross_freq', 'cross_proc', 'cross_proc_freq'], help='Donor '\
+												'pool for heterogeneous history: cross_freq (same core, other frequency), '\
+												'cross_proc (other core, any frequency), or cross_proc_freq (other core AND other frequency)')
 	parser.add_argument('--add_heterogeneity_features', action='store_true', help='Append het_flag and '\
 												'het_source_freq feature columns to every sample (train and test), '\
 												'marking which samples were replaced by heterogeneous-history '\
 												'injection and which frequency their data was sourced from')
+	parser.add_argument('--cbm_model_dir', default=None,
+												help='Path to CatBoost cross-frequency model root '
+												'({cpu} subdir containing {suite}/top4/{sf}GHz_to_{tf}GHz/model_{bench}.cbm). '
+												'When set with --heterogeneous_mode cross_freq, translates donor ref_cycles '
+												'to the target frequency instead of naive swap. Other counters are copied '
+												'directly as they are frequency-invariant.')
+	parser.add_argument('--cbm_cross_proc_dir', default=None,
+												help='Path to CatBoost cross-processor model root '
+												'(cpu{src}_to_cpu{tgt}/{suite}/top4/cpu{src}_{sf}GHz_to_cpu{tgt}_{tf}GHz/model_{bench}.cbm). '
+												'When set with --heterogeneous_mode cross_proc or cross_proc_freq, translates donor '
+												'ref_cycles to the target CPU/frequency instead of naive swap.')
 	return parser
 
 def supervised_model_args(parser):

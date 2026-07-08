@@ -5,8 +5,21 @@ import numpy as np
 import pandas as pd
 import src.TimeSeries as ts
 
+try:
+    from catboost import CatBoostRegressor as _CatBoost
+    _CATBOOST_AVAILABLE = True
+except ImportError:
+    _CATBOOST_AVAILABLE = False
+
+# Allowed donor-suite subdirectory names for translation (cross-freq and cross-proc).
+# dacapo_c2 is excluded because it lacks features required by the CatBoost models.
+_ALLOWED_DONOR_SUITES = ('dacapo_c1', 'spec_2017', 'spec_2026')
+
 BENCHMARK_NAME_RE = re.compile(
     r"^aligned_(?P<rest>.+)_(?P<freq>[\d.]+)GHz_cpu(?P<cpu>\d+)_phase(?P<phase>\d+)$"
+)
+BENCHMARK_NAME_NOPHASE_RE = re.compile(
+    r"^aligned_(?P<rest>.+)_(?P<freq>[\d.]+)GHz_cpu(?P<cpu>\d+)$"
 )
 
 def get_raw_data(args):
@@ -16,32 +29,46 @@ def get_raw_data(args):
     """
     # 1. Dynamically find the PerfCount root directory (4 folders up from src/create_dataset.py)
     root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..', '..', '..'))
-    
+
     # 2. Find the benchmark CSV recursively under the processed data directory
     data_dir = os.path.join(root_dir, 'processed_data_10M', args.dataset)
     matches = glob.glob(os.path.join(data_dir, "**", f"{args.benchmark}.csv"), recursive=True)
-    if not matches:
-        print(f"[ERROR] Could not find {args.benchmark}.csv under: {data_dir}")
-        return None
-    file_path = matches[0]
-        
-    # 3. Load the data
-    df = pd.read_csv(file_path)
-    
+    if matches:
+        df = pd.read_csv(matches[0])
+    else:
+        # No exact match — concatenate all phases (e.g. _phase0, _phase1, ...).
+        # Deduplicate by phase number: sort paths alphabetically within each phase so
+        # dacapo_c1 < dacapo_c2 — then keep only the first (earliest) path per phase.
+        all_phase_matches = glob.glob(
+            os.path.join(data_dir, "**", f"{args.benchmark}_phase*.csv"), recursive=True
+        )
+        phase_by_num = {}
+        for p in sorted(all_phase_matches):
+            num = int(re.search(r'_phase(\d+)\.csv$', p).group(1))
+            if num not in phase_by_num:
+                phase_by_num[num] = p
+        phase_matches = [phase_by_num[n] for n in sorted(phase_by_num)]
+        if not phase_matches:
+            print(f"[ERROR] Could not find {args.benchmark}.csv (or phased variants) under: {data_dir}")
+            return None
+        phase_dfs = [pd.read_csv(f) for f in phase_matches]
+        common_cols = list(set.intersection(*[set(d.columns) for d in phase_dfs]))
+        df = pd.concat([d[common_cols] for d in phase_dfs], ignore_index=True)
+
     # 4. Filter for valid requested counters
     valid_counters = [c for c in args.input_counters if c in df.columns]
     missing = [c for c in args.input_counters if c not in df.columns]
     if missing:
         print(f"[WARNING] {args.benchmark} is missing columns: {missing}")
-        
+
     data_local = df[valid_counters]
-    
+
     # 5. Apply cropping if specified via arguments
     if args.end_drop_count != 0:
         data_local = data_local.iloc[args.start_drop_count:-args.end_drop_count, :]
     else:
         data_local = data_local.iloc[args.start_drop_count:, :]
-        
+
     return data_local
 
 def _get_data_dir(args):
@@ -61,17 +88,29 @@ def _find_donor_files(args, columns):
     args.heterogeneous_mode:
       - cross_freq: same core, a different frequency
       - cross_proc: a different core, any frequency (including the same)
+      - cross_proc_freq: a different core AND a different frequency
+
+    Supports both per-phase benchmarks (aligned_..._phaseN) and concatenated
+    benchmarks (aligned_... without phase suffix). In the concatenated case, all
+    phase files for matching donor configs are returned; apply_heterogeneous_history
+    wraps the donor index with modulo so every training row gets a replacement.
 
     Only donors whose header contains every column in `columns` are kept.
     """
     m = BENCHMARK_NAME_RE.match(args.benchmark)
-    if not m:
-        return []
+    if m:
+        rest, cur_freq, cur_cpu = m.group('rest'), m.group('freq'), m.group('cpu')
+        phase_glob = f"_phase{m.group('phase')}"
+    else:
+        m = BENCHMARK_NAME_NOPHASE_RE.match(args.benchmark)
+        if not m:
+            return []
+        rest, cur_freq, cur_cpu = m.group('rest'), m.group('freq'), m.group('cpu')
+        phase_glob = "_phase*"
 
-    rest, cur_freq, cur_cpu, phase = m.group('rest'), m.group('freq'), m.group('cpu'), m.group('phase')
     data_dir = _get_data_dir(args)
 
-    pattern = os.path.join(data_dir, "**", f"aligned_{rest}_*GHz_cpu*_phase{phase}.csv")
+    pattern = os.path.join(data_dir, "**", f"aligned_{rest}_*GHz_cpu*{phase_glob}.csv")
     donors = []
     for fpath in glob.glob(pattern, recursive=True):
         name = os.path.basename(fpath).replace('.csv', '')
@@ -83,8 +122,11 @@ def _find_donor_files(args, columns):
         if args.heterogeneous_mode == 'cross_freq':
             if d_cpu != cur_cpu or d_freq == cur_freq:
                 continue
-        else:  # cross_proc
+        elif args.heterogeneous_mode == 'cross_proc':
             if d_cpu == cur_cpu:
+                continue
+        else:  # cross_proc_freq: other core AND other frequency
+            if d_cpu == cur_cpu or d_freq == cur_freq:
                 continue
 
         try:
@@ -100,8 +142,13 @@ def _find_donor_files(args, columns):
 
 
 def _own_freq(args):
-    m = BENCHMARK_NAME_RE.match(args.benchmark)
+    m = BENCHMARK_NAME_RE.match(args.benchmark) or BENCHMARK_NAME_NOPHASE_RE.match(args.benchmark)
     return float(m.group('freq')) if m else 0.0
+
+
+def _own_cpu(args):
+    m = BENCHMARK_NAME_RE.match(args.benchmark) or BENCHMARK_NAME_NOPHASE_RE.match(args.benchmark)
+    return m.group('cpu') if m else None
 
 
 def add_heterogeneity_columns(args, data):
@@ -115,6 +162,84 @@ def add_heterogeneity_columns(args, data):
     return data
 
 
+_SPEC_NUM_RE = re.compile(r'^spec_(\d+)\.')
+
+
+def _bench_suite_dir_cross_freq(bench_name):
+    """Suite subdirectory in the cross-frequency model tree.
+    dacapo uses the pruned model variant; spec_2026 has no cross-freq models."""
+    if bench_name.startswith('dacapo_'):
+        return 'dacapo_c1_pruned'
+    m = _SPEC_NUM_RE.match(bench_name)
+    if m:
+        return 'spec_2026' if int(m.group(1)) >= 700 else 'spec_2017'
+    return None
+
+
+def _bench_suite_dir(bench_name):
+    """Suite subdirectory in the cross-processor model tree."""
+    if bench_name.startswith('dacapo_'):
+        return 'dacapo_c1'
+    m = _SPEC_NUM_RE.match(bench_name)
+    if m:
+        return 'spec_2026' if int(m.group(1)) >= 700 else 'spec_2017'
+    return None
+
+
+def _load_cbm(cbm_model_dir, src_freq, tgt_freq, bench_name):
+    """Load a CatBoost cross-frequency translation model, or None if not found.
+    cbm_model_dir is the per-cpu root containing
+    {suite}/top4/{src}GHz_to_{tgt}GHz/model_{bench}.cbm."""
+    suite = _bench_suite_dir_cross_freq(bench_name)
+    if suite is None:
+        return None
+    path = os.path.join(
+        cbm_model_dir, suite, 'top4',
+        f'{src_freq}GHz_to_{tgt_freq}GHz', f'model_{bench_name}.cbm'
+    )
+    if not os.path.exists(path):
+        return None
+    m = _CatBoost()
+    m.load_model(path)
+    return m
+
+
+def _load_cbm_cross_proc(cbm_cross_proc_dir, src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name):
+    """Load a CatBoost cross-processor translation model, or None if not found."""
+    suite = _bench_suite_dir(bench_name)
+    if suite is None:
+        return None
+    path = os.path.join(
+        cbm_cross_proc_dir,
+        f'cpu{src_cpu}_to_cpu{tgt_cpu}', suite, 'top4',
+        f'cpu{src_cpu}_{src_freq}GHz_to_cpu{tgt_cpu}_{tgt_freq}GHz',
+        f'model_{bench_name}.cbm'
+    )
+    if not os.path.exists(path):
+        return None
+    m = _CatBoost()
+    m.load_model(path)
+    return m
+
+
+def _translate_ref_cycles(cbm, full_df, features=None):
+    """
+    Apply a CatBoost model to translate the ref_cycles column in full_df.
+    features: explicit column names, or None to auto-discover from cbm.feature_names_.
+    Returns int64 array or None if any required feature is missing from full_df.
+    """
+    if features is None:
+        features = list(cbm.feature_names_)
+    if not all(f in full_df.columns for f in features):
+        return None
+    X = full_df[features]
+    src_ref = full_df['ref_cycles'].values
+    mask = src_ref > 0
+    pred_log_ratio = cbm.predict(X)
+    translated = np.where(mask, np.exp(pred_log_ratio) * src_ref, src_ref)
+    return translated.round().astype(np.int64)
+
+
 def apply_heterogeneous_history(args, train_data):
     """
     With probability args.heterogeneous_prob, replace each row of the
@@ -122,6 +247,11 @@ def apply_heterogeneous_history(args, train_data):
     trace (a different frequency and/or core, per args.heterogeneous_mode).
     Selection and donor assignment are seeded by args.heterogeneous_seed for
     repeatability. The test set is never touched (caller only passes train_data).
+
+    When args.cbm_model_dir (cross_freq) or args.cbm_cross_proc_dir (cross_proc /
+    cross_proc_freq) is set, ref_cycles is translated to the target operating point
+    via a pre-trained CatBoost model before injection; the other counters are copied
+    directly. Falls back to naive swap when no model exists for a given workload.
 
     If args.add_heterogeneity_features is set, also appends het_flag and
     het_source_freq columns marking which samples were replaced and which
@@ -139,6 +269,33 @@ def apply_heterogeneous_history(args, train_data):
     if not donors:
         return train_data
 
+    cbm_model_dir      = getattr(args, 'cbm_model_dir', None)
+    cbm_cross_proc_dir = getattr(args, 'cbm_cross_proc_dir', None)
+    mode = args.heterogeneous_mode
+
+    use_translation = (
+        cbm_model_dir is not None
+        and mode == 'cross_freq'
+        and _CATBOOST_AVAILABLE
+    )
+    use_cross_proc_translation = (
+        cbm_cross_proc_dir is not None
+        and mode in ('cross_proc', 'cross_proc_freq')
+        and _CATBOOST_AVAILABLE
+    )
+
+    if use_translation or use_cross_proc_translation:
+        # Only keep donors from allowed suites (dacapo_c1, spec_2017, spec_2026); exclude dacapo_c2
+        donors = [
+            d for d in donors
+            if any(f'/{s}/' in d for s in _ALLOWED_DONOR_SUITES)
+        ]
+        if not donors:
+            return train_data
+
+    tgt_freq = _own_freq(args)
+    tgt_cpu  = _own_cpu(args)
+
     rng = np.random.default_rng(args.heterogeneous_seed)
     n = train_data.shape[0]
     swap_mask = rng.random(n) < args.heterogeneous_prob
@@ -148,18 +305,52 @@ def apply_heterogeneous_history(args, train_data):
 
     train_data = train_data.copy()
 
+    # donor_cache: path -> (full_df, src_freq, src_cpu, translated_ref_or_None)
     donor_cache = {}
+    cbm_cache = {}
+
     for idx in swap_indices:
         donor_path = donors[rng.integers(len(donors))]
         if donor_path not in donor_cache:
-            donor_df = _crop(pd.read_csv(donor_path)[counter_cols], args).reset_index(drop=True)
+            full_df = _crop(pd.read_csv(donor_path), args).reset_index(drop=True)
             dm = BENCHMARK_NAME_RE.match(os.path.basename(donor_path).replace('.csv', ''))
-            donor_cache[donor_path] = (donor_df, float(dm.group('freq')))
-        donor_df, donor_freq = donor_cache[donor_path]
-        if idx >= len(donor_df):
-            continue
+            src_freq   = float(dm.group('freq'))
+            src_cpu    = dm.group('cpu')
+            bench_name = dm.group('rest')
+
+            translated_ref = None
+
+            if use_translation:
+                cbm_key = (src_freq, tgt_freq, bench_name)
+                if cbm_key not in cbm_cache:
+                    cbm_cache[cbm_key] = _load_cbm(cbm_model_dir, src_freq, tgt_freq, bench_name)
+                cbm = cbm_cache[cbm_key]
+                if cbm is not None:
+                    translated_ref = _translate_ref_cycles(cbm, full_df)
+            elif use_cross_proc_translation:
+                cbm_key = (src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name)
+                if cbm_key not in cbm_cache:
+                    cbm_cache[cbm_key] = _load_cbm_cross_proc(
+                        cbm_cross_proc_dir, src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name
+                    )
+                cbm = cbm_cache[cbm_key]
+                if cbm is not None:
+                    translated_ref = _translate_ref_cycles(cbm, full_df)
+
+            donor_cache[donor_path] = (full_df, src_freq, src_cpu, translated_ref)
+
+        full_df, donor_freq, src_cpu, translated_ref = donor_cache[donor_path]
         row_label = train_data.index[idx]
-        train_data.loc[row_label, counter_cols] = donor_df.iloc[idx].values
+        row_i     = idx % len(full_df)
+        donor_row = full_df.iloc[row_i]
+
+        for col in counter_cols:
+            if col in full_df.columns:
+                train_data.loc[row_label, col] = donor_row[col]
+
+        if translated_ref is not None and 'ref_cycles' in counter_cols:
+            train_data.loc[row_label, 'ref_cycles'] = translated_ref[row_i]
+
         if add_features:
             train_data.loc[row_label, 'het_flag'] = 1
             train_data.loc[row_label, 'het_source_freq'] = donor_freq
@@ -185,7 +376,7 @@ def reshape_with_batch_size(X_train, y_train, X_test, y_test, batch_size):
 
 def get_separate_time_series_splits(args, data):
     """
-    Splits the data into train/test FIRST, then applies time series transforms independently 
+    Splits the data into train/test FIRST, then applies time series transforms independently
     to prevent data leakage across the train/test boundary.
     """
     split_idx = int(data.shape[0] * args.train_size / 100)
