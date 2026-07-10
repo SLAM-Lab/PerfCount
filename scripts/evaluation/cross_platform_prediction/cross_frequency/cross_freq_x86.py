@@ -35,6 +35,7 @@ from shared_features import (
     run_loocv,
     print_summary,
     save_feature_importance,
+    filter_excluded_benchmarks,
 )
 
 
@@ -314,6 +315,7 @@ def main():
     print(f"{'='*60}\n")
 
     data_map = load_x86_data(args.data_dir, target_cpu=args.target_cpu, suite=args.suite)
+    data_map = filter_excluded_benchmarks(data_map, args)
     if not data_map:
         print("[ERROR] No data loaded. Check --data_dir and file naming.")
         return

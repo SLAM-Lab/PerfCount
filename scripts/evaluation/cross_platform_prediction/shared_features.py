@@ -22,6 +22,14 @@ from joblib import Parallel, delayed
 #     Call add_feature_args(parser) in each script to attach the shared flags.
 # =============================================================================
 
+# DaCapo workloads whose total dynamic instruction count varies sharply across
+# frequency/core configurations (>19% CV in repeated-run testing, vs. <3% for
+# every other DaCapo workload) — tradebeans/tradesoap/h2o run for a roughly
+# fixed wall-clock duration rather than a fixed amount of work, so "same
+# workload" does not mean "same amount of work" once frequency or core changes.
+UNSTABLE_DACAPO_WORKLOADS = ["cassandra", "tradebeans", "tradesoap", "h2o", "kafka"]
+
+
 def add_feature_args(parser):
     """Attach the shared feature-toggle and model flags to an argparse parser."""
     g = parser.add_argument_group("Feature toggles")
@@ -42,7 +50,45 @@ def add_feature_args(parser):
                         "regardless of trace length (1/len per sample). "
                         "Prevents long workloads from dominating the fit.")
 
+    g.add_argument("--exclude_unstable_dacapo", action="store_true", default=False,
+                   help="Drop DaCapo workloads with high cross-configuration variance "
+                        f"in total instruction count ({', '.join(UNSTABLE_DACAPO_WORKLOADS)}) "
+                        "from the evaluation. No effect on SPEC workloads.")
+
     return parser
+
+
+def filter_excluded_benchmarks(data_map, args):
+    """
+    Drop entries whose base workload name is in UNSTABLE_DACAPO_WORKLOADS
+    when --exclude_unstable_dacapo is set. No-op otherwise.
+
+    Parameters
+    ----------
+    data_map : dict[(freq_str, bench_phase_str) -> pd.DataFrame]
+        Keys carry the workload name as 'bench_phaseN'; matches the
+        'bench_phase_str' convention used by every cross_* loader.
+    args     : argparse.Namespace  (carries --exclude_unstable_dacapo)
+    """
+    if not getattr(args, "exclude_unstable_dacapo", False):
+        return data_map
+
+    def base_name(bench_phase_key):
+        # DaCapo aligned files are named 'aligned_dacapo_<bench>_...', so the
+        # parsed bench id carries a literal 'dacapo_' prefix; SPEC bench ids
+        # don't, so stripping it here is safe for both suites.
+        name = bench_phase_key.split("_phase")[0]
+        return name[len("dacapo_"):] if name.startswith("dacapo_") else name
+
+    filtered = {
+        k: v for k, v in data_map.items()
+        if base_name(k[1]) not in UNSTABLE_DACAPO_WORKLOADS
+    }
+    n_dropped = len(data_map) - len(filtered)
+    if n_dropped:
+        print(f"  [exclude_unstable_dacapo] Dropped {n_dropped} file(s) "
+              f"for workloads: {', '.join(UNSTABLE_DACAPO_WORKLOADS)}")
+    return filtered
 
 
 # =============================================================================

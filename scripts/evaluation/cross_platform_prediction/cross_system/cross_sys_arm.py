@@ -60,6 +60,7 @@ from shared_features import (
     run_loocv,
     print_summary,
     save_feature_importance,
+    filter_excluded_benchmarks,
 )
 
 
@@ -249,7 +250,7 @@ def run_freq_pair(src_map, tgt_map, src_freq, tgt_freq, src_label, tgt_label,
         merged = prepare_bench_df(
             src_map[(src_freq, b)].copy(),
             tgt_map[(tgt_freq, b)].copy(),
-            target_key="cpu_cycles",
+            target_key=args.target_key,
         )
         if merged is not None:
             bench_dfs[b] = merged
@@ -307,6 +308,9 @@ def main():
     parser.add_argument("--suite", choices=["all", "spec_2017", "spec_2026", "dacapo_c2", "dacapo_c1"], default="spec_2017",
                         help="Benchmark suite to include: "
                              "'all', 'spec_2017' (default), 'spec_2026', 'dacapo_c2', or 'dacapo_c1'.")
+    parser.add_argument("--target_key", type=str, default="cpu_cycles",
+                        help="Counter to predict (default: cpu_cycles). "
+                             "Use ref_cycles for x86 cross-system.")
     parser.add_argument("--freq", type=str, default=None,
                         help="Run only the matched frequency pair at this value "
                              "(e.g. '1.0' to run only 1.0 GHz -> 1.0 GHz). "
@@ -341,6 +345,8 @@ def main():
 
     src_map = load_platform_data(args.src_data_dir, cpu_id=args.src_cpu, suite=args.suite)
     tgt_map = load_platform_data(args.tgt_data_dir, cpu_id=args.tgt_cpu, suite=args.suite)
+    src_map = filter_excluded_benchmarks(src_map, args)
+    tgt_map = filter_excluded_benchmarks(tgt_map, args)
 
     if not src_map:
         print(f"[ERROR] No data loaded from src: {args.src_data_dir}")

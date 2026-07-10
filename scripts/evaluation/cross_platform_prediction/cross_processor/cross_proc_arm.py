@@ -58,6 +58,7 @@ from shared_features import (
     run_loocv,
     print_summary,
     save_feature_importance,
+    filter_excluded_benchmarks,
 )
 
 
@@ -308,6 +309,8 @@ def main():
 
     src_map = load_cpu_data(args.data_dir, args.src_cpu, suite=args.suite)
     tgt_map = load_cpu_data(args.data_dir, args.tgt_cpu, suite=args.suite)
+    src_map = filter_excluded_benchmarks(src_map, args)
+    tgt_map = filter_excluded_benchmarks(tgt_map, args)
 
     if not src_map:
         print(f"[ERROR] No data found for src cpu{args.src_cpu}. Check --data_dir.")
