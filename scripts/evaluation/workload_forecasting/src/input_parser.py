@@ -4,6 +4,8 @@ def set_experiment_args(parser):
 	parser.add_argument('--benchmark',			required=True)
 	parser.add_argument('--dataset',			required=True,	help='Name of the dataset in the Data folder')
 	parser.add_argument('--predictions_csv',	action='store_true',	help='Save predictions in csv format')
+	parser.add_argument('--save_model_path',	default=None,	help='Base path (no extension) to save the trained model. '\
+												'Keras models are saved as <path>.keras, scikit-learn models as <path>.joblib')
 	parser.add_argument('--train_size',			type=int,	default=70)
 	parser.add_argument('--results_folder',		default='results',	help='Folder to save results')
 	parser.add_argument('--name',				default='', help='Experiment name used for results filenames')

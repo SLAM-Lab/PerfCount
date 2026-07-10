@@ -114,12 +114,23 @@ def _log_path(job_args, cpu, tag):
     return l_dir, os.path.join(l_dir, f"{workload}_{m}.log")
 
 
+def _model_path(job_args, cpu, tag):
+    gran, suite, freq, h, t, m, p, workload = job_args
+    m_dir = os.path.join(
+        ROOT_DIR,
+        f"models_{gran}/{MACHINE}_cpu{cpu}_het_cross_freq_{tag}/{suite}/{freq}GHz/het_{p}/horizon_{h}/timesteps_{t}"
+    )
+    return m_dir, os.path.join(m_dir, f"{workload}_{m}")
+
+
 def run_job(job_args, cpu, tag, cbm_model_dir):
     gran, suite, freq, h, t, m, p, workload = job_args
     l_dir, log_file = _log_path(job_args, cpu, tag)
     os.makedirs(l_dir, exist_ok=True)
     if is_job_successful(log_file):
         return
+    m_dir, model_path = _model_path(job_args, cpu, tag)
+    os.makedirs(m_dir, exist_ok=True)
     early_stop = ["--early_stopping", "--patience", "10"] if m != "dt" else []
     translate_args = ["--cbm_model_dir", cbm_model_dir] if cbm_model_dir else []
     cmd = [
@@ -129,6 +140,7 @@ def run_job(job_args, cpu, tag, cbm_model_dir):
         "--model", m, "--timesteps", str(t), "--forecast_horizon", str(h),
         "--epochs", str(EPOCHS), "--batch_size", "32", "--neurons", "16",
         "--optimizer", "nadam", "--loss_function", "mae", "--name", f"{workload}_{m}",
+        "--save_model_path", model_path,
         "--heterogeneous_prob", str(p), "--heterogeneous_seed", str(HET_SEED),
         "--heterogeneous_mode", "cross_freq",
     ] + translate_args + early_stop

@@ -52,6 +52,7 @@ def main():
 
         predictor = pred.SerialPredictor(args, train_data.X)
         predictions = predictor.train_predict(args, train_data, test_data)
+        predictor.save_model(args)
 
         test_data.add_predictions(args, predictions)
         predictions_df = test_timeseries.invert_predicted_transforms(test_data.y_hat)

@@ -221,3 +221,21 @@ class SerialPredictor():
         self.predictor = Regressor(args,X)
     def train_predict(self, args, train_data, test_data):
         return self.predictor.train_predict(args, train_data, test_data)
+
+    def save_model(self, args):
+        """Persist the trained model to args.save_model_path (no extension).
+
+        Keras models (mlp/lstm/transformer/...) are written as ``<path>.keras``;
+        scikit-learn models (dt/svm, possibly MultiOutputRegressor-wrapped) as
+        ``<path>.joblib``. No-op when --save_model_path is unset.
+        """
+        path = getattr(args, 'save_model_path', None)
+        if not path:
+            return
+        os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+        model = self.predictor.model
+        if args.model in ('dt', 'svm'):
+            import joblib
+            joblib.dump(model, path + '.joblib')
+        else:
+            model.save(path + '.keras')
