@@ -19,8 +19,8 @@ if __name__ == "__main__":
 
     dacapo_benchmarks = strict_benchmarks + relaxed_benchmarks
 
-    frequencies = ["1.0"] 
-    cpus = [4, 1]
+    frequencies = ["2.0"] 
+    cpus = [4]
     dacapo_dir = "../../../benchmarks/dacapo"
 
     # Strict Flags (Maximum Determinism ported from x86)
