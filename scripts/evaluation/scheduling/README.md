@@ -289,6 +289,25 @@ python scripts/evaluation/scheduling/cross_proc_precompute.py \
   --out_dir    results/scheduling/cross_proc_predictions
 ```
 
+### Error-capped predictions
+
+Both precompute scripts accept `--max_error_pct X` to clamp every per-sample
+prediction to within ±X% of the oracle speedup.  This lets you sweep the
+error bound and see how accurate the model needs to be for each scheduling
+policy to work:
+
+```bash
+# Example: cap cross-freq predictions to ±10% error
+for cap in 5 10 20 50; do
+  python scripts/evaluation/scheduling/cross_freq_precompute.py \
+    --model_base_dir results/cross_platform/cross_freq/x86_10M \
+    --pmu_dir        processed_data_10M/x86_desktop_heterogeneous \
+    --oracle_dir     results/scheduling/speedup_full/granular_phase_traces \
+    --out_dir        results/scheduling/cross_freq_predictions_cap${cap} \
+    --core_type P --max_error_pct ${cap}
+done
+```
+
 ### Output
 
 ```
@@ -426,7 +445,7 @@ python3 scripts/evaluation/scheduling/cross_proc_precompute.py \
 # 6. Run simulator
 python3 scripts/evaluation/scheduling/src/main.py \
   --input_dir             results/scheduling/speedup_full/granular_phase_traces \
-  --output_dir            results/scheduling/model_out_v10 \
+  --output_dir            results/scheduling/model_out_v11 \
   --cross_freq_p_pred_dir results/scheduling/cross_freq_predictions \
   --cross_freq_e_pred_dir results/scheduling/cross_freq_predictions \
   --cross_proc_pred_dir   results/scheduling/cross_proc_predictions \

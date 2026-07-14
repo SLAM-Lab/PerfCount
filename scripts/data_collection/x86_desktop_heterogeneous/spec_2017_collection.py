@@ -23,7 +23,8 @@ if __name__ == "__main__":
         count = 0
 
         # --- SPEC P-Core Collection ---
-        for run_number in list(range(0, 14)) + [100]:
+#        for run_number in list(range(0, 14)) + [100]:
+        for run_number in list(range(0, 1)):
             for freq in frequencies:
                 for cpu in p_cpus:
                     if run_number == 100:
@@ -45,7 +46,7 @@ if __name__ == "__main__":
                         count += 1
 
         # --- SPEC E-Core Collection ---
-        for run_number in list(range(0, 10)) + [100]:
+        for run_number in []:#list(range(0, 10)) + [100]:
             for freq in frequencies:
                 for cpu in e_cpus:
                     if run_number == 100:

@@ -453,6 +453,50 @@ def make_isofreq_model_oracle_k(target_freq, k=1):
     )
 
 
+def make_isofreq_model_dampened(target_freq, window=10):
+    """Cross-proc model with rolling-window variance dampening.
+    Reactive temporal; blends predictions toward rolling mean when volatile."""
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='greedy',
+        temporal='reactive',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+        dampen_window=window,
+    )
+
+
+def make_isofreq_model_mpc_oracle(target_freq, horizon=5):
+    """Cross-proc model MPC with oracle temporal: plans over next `horizon`
+    chunks using actual predicted future data to find transition-cost-optimal path."""
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='mpc',
+        window_size=horizon,
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+    )
+
+
 # ==========================================
 # ISOFREQ ORACLE HEURISTIC: EAS-style with current chunk's TRUE timing
 # ==========================================
@@ -542,6 +586,32 @@ def make_hetero_model_oracle_k(k=1):
         src_idx_fn=_src_cfg_idx,
         start_idx_fn=_p_max_start_idx,
         lookahead_k=k,
+    )
+
+
+def make_hetero_model_dampened(window=10):
+    """Full P+E model with rolling-window variance dampening.
+    Reactive temporal; blends predictions toward rolling mean when volatile."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='reactive',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+        dampen_window=window,
+    )
+
+
+def make_hetero_model_mpc_oracle(horizon=5):
+    """Full P+E model MPC with oracle temporal: plans over next `horizon`
+    chunks using actual predicted future data to find transition-cost-optimal path."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='mpc',
+        window_size=horizon,
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
     )
 
 

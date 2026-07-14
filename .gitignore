@@ -6,8 +6,11 @@ results/
 
 # Ignore raw data and processed data
 processed_data_10M/
+processed_data_10M_power/
 processed_data_100M/
+processed_data_100M_power/
 processed_data_1000M/
+power_data_10M/
 raw_data/
 
 # Ignore Python cache files

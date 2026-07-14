@@ -42,7 +42,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "cross_platform_prediction"))
-from shared_features import build_features, try_load_model
+from shared_features import build_features, try_load_model, restrict_input_counters
 
 FREQS = [1.0, 2.0, 3.0, 4.0]
 ARM_FREQS = [1.0]
@@ -57,13 +57,36 @@ def make_feature_args():
     return ns
 
 
-def find_workloads(model_dir):
-    """Discover bench names from model CBM files in the reference freq-pair dir."""
+_SUITE_PREFIXES = {
+    'spec2017': lambda b: b.startswith('spec_5'),
+    'spec2026': lambda b: b.startswith('spec_') and not b.startswith('spec_5'),
+    'dacapo':   lambda b: b.startswith('dacapo_'),
+}
+
+
+def find_workloads(model_dir, pmu_dir=None, cpu_id=None, suite=None):
+    """Discover bench names from model CBM files in the reference freq-pair dir.
+
+    If a single 'model_all_workloads.cbm' is found (--no_holdout training),
+    discovers actual bench names from aligned CSVs in pmu_dir instead,
+    filtered to the given suite.
+    """
     ref_dir = Path(model_dir) / "1.0GHz_to_2.0GHz"
     benches = sorted(
         p.stem.replace("model_", "")
         for p in ref_dir.glob("model_*.cbm")
     )
+    if benches == ['all_workloads'] and pmu_dir is not None and cpu_id is not None:
+        import re
+        pat = re.compile(rf"aligned_(.+?)_[\d.]+GHz_{cpu_id}_phase\d+\.csv")
+        discovered = set()
+        for f in Path(pmu_dir).glob(f"aligned_*_{cpu_id}_phase*.csv"):
+            m = pat.match(f.name)
+            if m:
+                discovered.add(m.group(1))
+        if suite and suite in _SUITE_PREFIXES:
+            discovered = {b for b in discovered if _SUITE_PREFIXES[suite](b)}
+        benches = sorted(discovered)
     return benches
 
 
@@ -98,10 +121,13 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_freq, prefix):
 
 
 def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
-                   suites=None, arch='x86'):
+                   suites=None, max_error_pct=None, input_counters=None):
     if suites is None:
         suites = ['spec2017']
+    if max_error_pct is not None:
+        print(f"Error capping enabled: predictions clamped to ±{max_error_pct}% of oracle")
     feat_args = make_feature_args()
+    feat_args.input_counters = input_counters
     model_base_dir = Path(model_base_dir)
     pmu_dir = Path(pmu_dir)
     oracle_dir = Path(oracle_dir)
@@ -116,7 +142,7 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
         if not suite_model_dir.exists():
             print(f"[WARN] Model dir not found for suite '{suite}': {suite_model_dir}")
             continue
-        suite_benches = find_workloads(suite_model_dir)
+        suite_benches = find_workloads(suite_model_dir, pmu_dir, cpu_id, suite)
         print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
         for b in suite_benches:
             bench_to_model_dir[b] = suite_model_dir
@@ -161,6 +187,8 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
                     print(f"  [WARN] Could not read {pmu_file}: {e}")
                     continue
 
+                if input_counters:
+                    df_pmu = restrict_input_counters(df_pmu, "", input_counters)
                 X = build_features(df_pmu, "", feat_args)
                 if X.empty:
                     print(f"  [WARN] Empty features for {bench} {src_ghz} phase{ph}")
@@ -188,19 +216,26 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
 
                     # Model predicts log(ref_cycles_tgt / ref_cycles_src) = log(time_tgt/time_src)
                     # Speedup = time_src/time_tgt = 1 / exp(model.predict(X))
-                    pred_time_ratio = np.exp(model.predict(X.iloc[:n_out]))
+                    pred_time_ratio = np.clip(np.exp(model.predict(X.iloc[:n_out])), 0.2, 5.0)
                     pred_speedup = 1.0 / pred_time_ratio
-                    out_rows[col] = pred_speedup
 
-                    # MAPE vs oracle
+                    # Clamp per-sample error to ±max_error_pct of oracle
                     oracle_key = f"{prefix}_{tgt_ghz}"
                     if oracle_speedups and oracle_key in oracle_speedups:
                         y_true = oracle_speedups[oracle_key][:n_out]
+
+                        if max_error_pct is not None:
+                            max_frac = max_error_pct / 100.0
+                            ratio = pred_speedup / (y_true + 1e-9)
+                            pred_speedup = np.clip(ratio, 1 - max_frac, 1 + max_frac) * y_true
+
                         mask = y_true > 0
                         if mask.sum() > 0:
                             mape = np.mean(np.abs(y_true[mask] - pred_speedup[mask])
                                            / (y_true[mask] + 1e-9)) * 100
                             bench_mapes.append(mape)
+
+                    out_rows[col] = pred_speedup
 
                 out_csv = out_subdir / f"speedups_{prefix}_{src_ghz}_{bench}_phase{ph}.csv"
                 pd.DataFrame(out_rows).to_csv(out_csv, index=False)
@@ -234,10 +269,15 @@ def main():
                         help="Target architecture (controls available frequencies)")
     parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
                         help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
+    parser.add_argument("--max_error_pct", type=float, default=None,
+                        help="Cap per-sample prediction error to ±X%% of oracle. "
+                             "Sweep this to test model accuracy requirements.")
+    parser.add_argument("--input_counters", nargs='+', default=None,
+                        help="Must match the --input_counters used during training. "
+                             "Required when models were trained with a counter subset.")
     args = parser.parse_args()
     run_precompute(args.model_base_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
-                   args.core_type, args.suites, args.arch)
-
+                   args.core_type, args.suites, args.max_error_pct, args.input_counters)
 
 if __name__ == "__main__":
     main()

@@ -41,7 +41,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "cross_platform_prediction"))
-from shared_features import build_features, try_load_model
+from shared_features import build_features, try_load_model, restrict_input_counters
 
 FREQS = [1.0, 2.0, 3.0, 4.0]
 ARM_FREQS = [1.0]
@@ -55,10 +55,34 @@ def make_feature_args():
     )
 
 
-def find_workloads(p_to_e_model_dir):
-    """Discover bench names from P->E model CBM files in the reference pair dir."""
+_SUITE_PREFIXES = {
+    'spec2017': lambda b: b.startswith('spec_5'),
+    'spec2026': lambda b: b.startswith('spec_') and not b.startswith('spec_5'),
+    'dacapo':   lambda b: b.startswith('dacapo_'),
+}
+
+
+def find_workloads(p_to_e_model_dir, pmu_dir=None, suite=None):
+    """Discover bench names from P->E model CBM files in the reference pair dir.
+
+    If a single 'model_all_workloads.cbm' is found (--no_holdout training),
+    discovers actual bench names from aligned CSVs in pmu_dir instead,
+    filtered to the given suite.
+    """
     ref_dir = Path(p_to_e_model_dir) / "cpu0_1.0GHz_to_cpu16_1.0GHz"
-    return sorted(p.stem.replace("model_", "") for p in ref_dir.glob("model_*.cbm"))
+    benches = sorted(p.stem.replace("model_", "") for p in ref_dir.glob("model_*.cbm"))
+    if benches == ['all_workloads'] and pmu_dir is not None:
+        import re
+        pat = re.compile(r"aligned_(.+?)_[\d.]+GHz_cpu0_phase\d+\.csv")
+        discovered = set()
+        for f in Path(pmu_dir).glob("aligned_*_cpu0_phase*.csv"):
+            m = pat.match(f.name)
+            if m:
+                discovered.add(m.group(1))
+        if suite and suite in _SUITE_PREFIXES:
+            discovered = {b for b in discovered if _SUITE_PREFIXES[suite](b)}
+        benches = sorted(discovered)
+    return benches
 
 
 def find_phases(pmu_dir, bench, freq, core_suffix):
@@ -91,7 +115,8 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_core, src_freq, tgt_core):
 
 def _process_direction(bench, src_freqs, src_core, tgt_core,
                        model_subdir, core_suffix,
-                       pmu_dir, oracle_dir, out_dir, feat_args):
+                       pmu_dir, oracle_dir, out_dir, feat_args,
+                       max_error_pct=None, input_counters=None):
     """Run precompute for one direction (P->E or E->P). Returns list of MAPE values."""
     mapes = []
     for src_freq in src_freqs:
@@ -118,6 +143,8 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
                 print(f"  [WARN] {pmu_file.name}: {e}")
                 continue
 
+            if input_counters:
+                df_pmu = restrict_input_counters(df_pmu, "", input_counters)
             X = build_features(df_pmu, "", feat_args)
             if X.empty:
                 continue
@@ -134,12 +161,17 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
             for tgt_freq, model in models.items():
                 tgt_ghz = f"{tgt_freq:.1f}GHz"
                 col = f"Speedup_{tgt_core}_{tgt_ghz}_vs_{src_core}_{src_ghz}"
-                pred_speedup = 1.0 / np.exp(model.predict(X.iloc[:n_out]))
-                out_rows[col] = pred_speedup
+                pred_speedup = np.clip(1.0 / np.exp(model.predict(X.iloc[:n_out])), 1.0/15.0, 15.0)
 
                 oracle_key = f"{tgt_core}_{tgt_ghz}"
                 if oracle_speedups and oracle_key in oracle_speedups:
                     y_true = oracle_speedups[oracle_key][:n_out]
+
+                    if max_error_pct is not None:
+                        max_frac = max_error_pct / 100.0
+                        ratio = pred_speedup / (y_true + 1e-9)
+                        pred_speedup = np.clip(ratio, 1 - max_frac, 1 + max_frac) * y_true
+
                     mask = y_true > 0
                     if mask.sum() > 0:
                         mape = np.mean(
@@ -147,6 +179,8 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
                             / (np.abs(y_true[mask]) + 1e-9)
                         ) * 100
                         mapes.append(mape)
+
+                out_rows[col] = pred_speedup
 
             out_csv = out_subdir / f"{bench}_phase{ph}.csv"
             pd.DataFrame(out_rows).to_csv(out_csv, index=False)
@@ -157,10 +191,14 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
 _ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
-def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None, arch='x86'):
+def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
+                   max_error_pct=None, input_counters=None):
     if suites is None:
         suites = _ALL_SUITES
+    if max_error_pct is not None:
+        print(f"Error capping enabled: predictions clamped to ±{max_error_pct}% of oracle")
     feat_args = make_feature_args()
+    feat_args.input_counters = input_counters
     model_dir = Path(model_dir)
     pmu_dir = Path(pmu_dir)
     oracle_dir = Path(oracle_dir)
@@ -188,7 +226,7 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None, arch='x
         if not l2b_dir.exists():
             print(f"[WARN] {little_type}->{big_type} model dir not found for suite '{suite}': {l2b_dir}")
             continue
-        suite_benches = find_workloads(b2l_dir)
+        suite_benches = find_workloads(p_to_e_dir, pmu_dir, suite)
         print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
         for b in suite_benches:
             bench_to_dirs[b] = (b2l_dir, l2b_dir)
@@ -202,12 +240,12 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None, arch='x
         bench_mapes = []
 
         bench_mapes += _process_direction(
-            bench, freqs, big_type, little_type, b2l_dir, (big_cpu, little_cpu),
-            pmu_dir, oracle_dir, out_dir, feat_args)
+            bench, FREQS, 'P', 'E', p_to_e_dir, ('cpu0', 'cpu16'),
+            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
 
         bench_mapes += _process_direction(
-            bench, freqs, little_type, big_type, l2b_dir, (little_cpu, big_cpu),
-            pmu_dir, oracle_dir, out_dir, feat_args)
+            bench, FREQS, 'E', 'P', e_to_p_dir, ('cpu16', 'cpu0'),
+            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
 
         if bench_mapes:
             print(f"  {bench}: MAPE={np.mean(bench_mapes):.1f}% ({len(bench_mapes)} combos)")
@@ -230,11 +268,15 @@ def main():
                         help="e.g. results/scheduling/cross_proc_predictions")
     parser.add_argument("--suites", nargs='+', default=_ALL_SUITES,
                         help=f"Benchmark suites to process (default: {' '.join(_ALL_SUITES)})")
-    parser.add_argument("--arch", default='x86', choices=['x86', 'arm_edge'],
-                        help="Target architecture (controls core types and frequencies)")
+    parser.add_argument("--max_error_pct", type=float, default=None,
+                        help="Cap per-sample prediction error to ±X%% of oracle. "
+                             "Sweep this to test model accuracy requirements.")
+    parser.add_argument("--input_counters", nargs='+', default=None,
+                        help="Must match the --input_counters used during training. "
+                             "Required when models were trained with a counter subset.")
     args = parser.parse_args()
-    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir, args.suites, args.arch)
-
+    run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
+                   args.suites, args.max_error_pct, args.input_counters)
 
 if __name__ == "__main__":
     main()

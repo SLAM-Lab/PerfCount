@@ -350,12 +350,20 @@ def process_workload(wl, ph, pairs, input_path, configs,
             hetero_calls[f'IsoFreq_Model_Oracle_{freq}'] = (sched.make_isofreq_model_oracle(freq), cross_proc_args)
             for k in [1, 2, 5]:
                 hetero_calls[f'IsoFreq_Model_Oracle_k{k}_{freq}'] = (sched.make_isofreq_model_oracle_k(freq, k=k), cross_proc_args)
+            for h in [5, 10]:
+                hetero_calls[f'IsoFreq_Model_MPC_Oracle_W{h}_{freq}'] = (sched.make_isofreq_model_mpc_oracle(freq, horizon=h), cross_proc_args)
+            for w in [5, 10]:
+                hetero_calls[f'Model_IsoFreq_Damp{w}_{freq}'] = (sched.make_isofreq_model_dampened(freq, window=w), cross_proc_args)
     if full_model_time_mat is not None:
         full_model_args = (*policy_args, full_model_time_mat)
         hetero_calls['Model_Reactive_Hetero']        = (sched.make_hetero_model_reactive(), full_model_args)
         hetero_calls['Model_Greedy_Oracle_Hetero']   = (sched.make_hetero_model_oracle(),   full_model_args)
         for k in [1, 2, 5]:
             hetero_calls[f'Model_Greedy_Oracle_k{k}_Hetero'] = (sched.make_hetero_model_oracle_k(k=k), full_model_args)
+        for h in [5, 10]:
+            hetero_calls[f'Model_MPC_Oracle_W{h}_Hetero'] = (sched.make_hetero_model_mpc_oracle(horizon=h), full_model_args)
+        for w in [5, 10]:
+            hetero_calls[f'Model_Reactive_Damp{w}_Hetero'] = (sched.make_hetero_model_dampened(window=w), full_model_args)
 
     # 4. Combined DVFS + Migration Policies
     combined_calls = {

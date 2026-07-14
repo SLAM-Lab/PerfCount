@@ -18,7 +18,7 @@ if __name__ == "__main__":
 
     email_recipient = "mebarondeau@utexas.edu"
 
-    frequencies = ["4.0"]
+    frequencies = ["1.0"]
     p_cpus = [0]   # P-core
     e_cpus = [16]  # E-core
     spec_dir = "../../../benchmarks/spec_2026"

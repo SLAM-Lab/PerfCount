@@ -241,10 +241,45 @@ def decide_model_global(model_sub_t, model_sub_e, sub_lat, sub_nrg, metric):
     return path
 
 
+def _dampen_predictions(model_sub_t, model_sub_e, si, row, n_configs,
+                        history_t, dampen_window):
+    """Blend model predictions toward the rolling mean when variance is high.
+
+    Tracks a rolling window of recent per-config predicted times. When the
+    coefficient of variation (std/mean) for any config exceeds a threshold,
+    blends that config's prediction toward the window mean proportionally to
+    the CV. This prevents the scheduler from reacting to volatile predictions.
+
+    Returns dampened (time_row, energy_row) as (1, n_configs) arrays.
+    """
+    raw_t = model_sub_t[si, row, :]
+    raw_e = model_sub_e[si, row, :]
+
+    history_t.append(raw_t.copy())
+    if len(history_t) > dampen_window:
+        history_t.pop(0)
+
+    if len(history_t) < 3:
+        return raw_t[np.newaxis, :], raw_e[np.newaxis, :]
+
+    hist = np.array(history_t)
+    mu = hist.mean(axis=0)
+    std = hist.std(axis=0)
+    cv = std / (mu + 1e-12)
+
+    # Blend factor: 0 when cv < 0.05 (stable), ramps to 1 when cv >= 0.3
+    alpha = np.clip((cv - 0.05) / 0.25, 0.0, 1.0)
+
+    dampened_t = (1.0 - alpha) * raw_t + alpha * mu
+    dampened_e = (1.0 - alpha) * raw_e + alpha * (raw_e / (raw_t + 1e-12)) * dampened_t
+
+    return dampened_t[np.newaxis, :], dampened_e[np.newaxis, :]
+
+
 def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                                      window_size=None, start_idx_fn=None,
                                      src_idx_fn=None, temporal='reactive',
-                                     lookahead_k=0):
+                                     lookahead_k=0, dampen_window=0):
     """Factory for model-based policies.
 
     Returned policy signature:
@@ -262,6 +297,12 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
 
     temporal: 'reactive' (default) uses chunk i-1's model row (prior PMU data,
         causal); 'oracle' uses chunk i's model row (perfect-future knowledge).
+
+    dampen_window: if >0, enables rolling-window variance dampening. The model's
+        predicted times are tracked over the last `dampen_window` chunks; when the
+        coefficient of variation is high (volatile predictions), the prediction is
+        blended toward the rolling mean to avoid reacting to outlier predictions.
+        This is implementable at runtime with zero extra inference cost.
     """
     _src_fn = src_idx_fn if src_idx_fn is not None else _src_freq_idx
 
@@ -292,6 +333,7 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
         start_idx = start_idx_fn(idx_list, valid_configs) if start_idx_fn else len(idx_list) - 1
         actions = np.zeros(n_chunks, dtype=int)
         prev_idx = start_idx
+        history_t = []
 
         for i in range(n_chunks):
             si = _src_fn(configs, idx_list, prev_idx)
@@ -301,7 +343,11 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                 action = start_idx
             elif decision_mode == 'greedy':
                 row = i if temporal == 'oracle' else i - 1
-                if lookahead_k > 0 and temporal == 'oracle':
+                if dampen_window > 0:
+                    window_t, window_e = _dampen_predictions(
+                        model_sub_t, model_sub_e, si, row,
+                        len(idx_list), history_t, dampen_window)
+                elif lookahead_k > 0 and temporal == 'oracle':
                     end = min(i + lookahead_k + 1, n_chunks)
                     window_t = model_sub_t[si, i:end, :].mean(axis=0, keepdims=True)
                     window_e = model_sub_e[si, i:end, :].mean(axis=0, keepdims=True)
@@ -312,9 +358,13 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
             elif decision_mode == 'mpc':
                 W = window_size or 1
                 n_future = min(W, n_chunks - i)
-                row = i if temporal == 'oracle' else i - 1
-                window_t = np.tile(model_sub_t[si, row, :], (n_future, 1))
-                window_e = np.tile(model_sub_e[si, row, :], (n_future, 1))
+                if temporal == 'oracle':
+                    window_t = model_sub_t[si, i:i + n_future, :]
+                    window_e = model_sub_e[si, i:i + n_future, :]
+                else:
+                    row = i - 1
+                    window_t = np.tile(model_sub_t[si, row, :], (n_future, 1))
+                    window_e = np.tile(model_sub_e[si, row, :], (n_future, 1))
                 if n_future == 1:
                     action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
                 else:
