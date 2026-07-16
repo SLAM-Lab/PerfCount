@@ -1,4 +1,5 @@
 import argparse
+import hashlib
 import json
 import re
 import numpy as np
@@ -6,13 +7,21 @@ from pathlib import Path
 import concurrent.futures
 
 # Direct local imports (since they are in the same folder as main.py)
-from data_loader import load_phase_data, load_workload_data
+import data_loader
+from data_loader import (load_phase_data, load_workload_data, _load_model_time_mat,
+                         _load_e_model_time_mat, _load_cross_proc_time_mat,
+                         _load_full_model_time_mat, build_oracle_axis_mat,
+                         _load_forecast_oracle_mat)
 from decision_policies import compute_trace_stats, accumulate_trace
 import dvfs_policies as dvfs
 import scheduling_policies as sched
 import plotter
 import combined_policies as comb
 import warmup_model
+
+
+# v2: all policies (incl. the Viterbi oracles) now start pinned to the same config.
+VITERBI_CACHE_VERSION = 2
 
 
 def _call_with_stats(policy_fn, *args, **kwargs):
@@ -149,9 +158,6 @@ def get_dvfs_cost(start_cfg, end_cfg):
     if s_freq == e_freq:
         return 0.0, 0.0
         
-    # Clamp bounds to 4.0GHz for safety (prevents crashes on P_5.0GHz evaluation)
-    s_freq, e_freq = min(s_freq, 4.0), min(e_freq, 4.0)
-        
     lat_map = {'P': P_LAT_US, 'E': E_LAT_US, 'B': ARM_B_LAT_US, 'L': ARM_L_LAT_US}[s_type]
     nrg_map = {'P': P_NRG_J, 'E': E_NRG_J, 'B': ARM_B_NRG_J, 'L': ARM_L_NRG_J}[s_type]
     
@@ -206,7 +212,18 @@ def build_transition_matrices(configs):
 def process_workload(wl, ph, pairs, input_path, configs,
                      power_mode='per_sample', cross_freq_p_pred_dir=None,
                      cross_freq_e_pred_dir=None, cross_proc_pred_dir=None,
-                     viterbi_cache_dir=None, apply_warmup=False, phases=None):
+                     cross_freq_p_forecast_dir=None, cross_freq_e_forecast_dir=None,
+                     cross_proc_forecast_dir=None, forecast_oracle_dir=None,
+                     cross_freq_p_forecast_gated_dir=None,
+                     cross_freq_e_forecast_gated_dir=None,
+                     cross_proc_forecast_gated_dir=None,
+                     forecast_oracle_gated_dir=None,
+                     cross_freq_p_forecast_unaware_dir=None,
+                     cross_freq_e_forecast_unaware_dir=None,
+                     cross_proc_forecast_unaware_dir=None,
+                     forecast_oracle_unaware_dir=None,
+                     viterbi_cache_dir=None, apply_warmup=False, phases=None,
+                     pred_tag='none', env_tag='none'):
     if phases is not None:
         data = load_workload_data(wl, phases, input_path, configs, power_mode=power_mode,
                                   model_pred_dir=cross_freq_p_pred_dir,
@@ -221,6 +238,70 @@ def process_workload(wl, ph, pairs, input_path, configs,
 
     time_mat, energy_mat, proxy_signal, valid_configs, min_len, model_time_mat, e_model_time_mat, cross_proc_time_mat, full_model_time_mat = data
     min_len = len(time_mat)
+
+    # Walk-forward FORECAST tensors: same source-keyed layout as the reactive/oracle
+    # model predictions, but each row i is a *causal forecast* for chunk i (made from
+    # history < i). Built here (per-phase path) via the same loaders; row-i indexing
+    # (make_model_1_step_oracle) is therefore an honest deployable forecast, not a peek.
+    #
+    # Two variants may be supplied. They differ ONLY in how the forecaster was trained
+    # (dump_dvfs_forecast.py --method per_phase vs global), so the file layout and every
+    # loader below are shared:
+    #   'aware'   -- per-phase models overwrite a global model's predictions for chunks
+    #                whose runtime phase has enough training samples.
+    #   'unaware' -- one model over the trailing window, no phase segmentation.
+    # Supplying both lets the scheduler measure whether phase-awareness converts into
+    # scheduling gains, rather than assuming the standalone MAPE advantage carries over.
+    def _build_forecast_tensors(p_dir, e_dir, cp_dir):
+        f_p = f_e = f_cp = f_full = None
+        if phases is not None or not (p_dir or e_dir or cp_dir):
+            return f_p, f_e, f_cp, f_full
+        power_mat = np.divide(energy_mat, time_mat, out=np.zeros_like(energy_mat),
+                              where=time_mat != 0)
+        if p_dir is not None:
+            f_p = _load_model_time_mat(wl, ph, p_dir, configs, min_len, time_mat, power_mat)
+        if e_dir is not None:
+            f_e = _load_e_model_time_mat(wl, ph, e_dir, configs, min_len, time_mat, power_mat)
+        if cp_dir is not None:
+            f_cp = _load_cross_proc_time_mat(wl, ph, cp_dir, configs, min_len, time_mat)
+        # Merged tensor over all 8 core x freq configs. The E cross-freq forecast must be
+        # passed too, or E-core frequency changes are invisible once on the E-core.
+        if f_p is not None and f_cp is not None:
+            f_full = _load_full_model_time_mat(f_p, f_cp, f_e)
+        return f_p, f_e, f_cp, f_full
+
+    (forecast_time_mat, e_forecast_time_mat, cross_proc_forecast_time_mat,
+     full_forecast_time_mat) = _build_forecast_tensors(
+        cross_freq_p_forecast_dir, cross_freq_e_forecast_dir, cross_proc_forecast_dir)
+
+    (fc_un_p_mat, fc_un_e_mat, _fc_un_cp_mat,
+     fc_un_full_mat) = _build_forecast_tensors(
+        cross_freq_p_forecast_unaware_dir, cross_freq_e_forecast_unaware_dir,
+        cross_proc_forecast_unaware_dir)
+
+    # GATED arm: the forecaster defers to persistence, per chunk, whenever it has not been
+    # beating persistence on recent history. Persistence is exactly what the reactive
+    # policy reads, so the gate bounds this policy below by reactive -- which is the one
+    # thing the ungated forecaster could not do (it lost to reactive on 2 of 3 suites).
+    (fc_g_p_mat, fc_g_e_mat, _fc_g_cp_mat,
+     fc_g_full_mat) = _build_forecast_tensors(
+        cross_freq_p_forecast_gated_dir, cross_freq_e_forecast_gated_dir,
+        cross_proc_forecast_gated_dir)
+
+    # Forecast x Oracle: the missing cell of the temporal x prediction-source grid.
+    forecast_oracle_mat = None
+    if phases is None and forecast_oracle_dir is not None:
+        forecast_oracle_mat = _load_forecast_oracle_mat(
+            wl, ph, forecast_oracle_dir, configs, min_len, time_mat)
+    forecast_oracle_unaware_mat = None
+    if phases is None and forecast_oracle_unaware_dir is not None:
+        forecast_oracle_unaware_mat = _load_forecast_oracle_mat(
+            wl, ph, forecast_oracle_unaware_dir, configs, min_len, time_mat)
+    forecast_oracle_gated_mat = None
+    if phases is None and forecast_oracle_gated_dir is not None:
+        forecast_oracle_gated_mat = _load_forecast_oracle_mat(
+            wl, ph, forecast_oracle_gated_dir, configs, min_len, time_mat)
+
     trans_lat, trans_nrg = build_transition_matrices(configs)
 
     summary_results = []
@@ -243,9 +324,11 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Static_P_4.0GHz':       (dvfs.make_static('P_4.0GHz'),             policy_args),
         # --- Reactive heuristics (decide using prior chunk's proxy) ---
         'Performance_Gov_P':     (dvfs.make_performance_governor('P'),       policy_args),
+        'Powersave_Gov_P':       (dvfs.make_powersave_governor('P'),         policy_args),
         'Ondemand_P':            (dvfs.make_ondemand('P'),                   policy_args),
         'Conservative_P':        (dvfs.make_conservative('P'),               policy_args),
         'Schedutil_PELT_P':      (dvfs.make_schedutil_pelt('P'),            policy_args),
+        'Interactive_P':         (dvfs.make_interactive('P'),                policy_args),
         'Intel_HWP_P':           (dvfs.make_intel_hwp('P'),                  policy_args),
         'EWMA_P':                (dvfs.make_ewma_dvfs('P'),                  policy_args),
         'UCB1_P':                (dvfs.make_ucb1_dvfs('P'),                  policy_args),
@@ -255,6 +338,7 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Ondemand_Future_P':     (dvfs.make_ondemand('P',     temporal_mode='oracle_heuristic'), policy_args),
         'Conservative_Future_P': (dvfs.make_conservative('P', temporal_mode='oracle_heuristic'), policy_args),
         'Schedutil_Future_P':    (dvfs.make_schedutil_pelt('P', temporal_mode='oracle_heuristic'), policy_args),
+        'Interactive_Future_P':  (dvfs.make_interactive('P', temporal_mode='oracle_heuristic'), policy_args),
         'Intel_HWP_Future_P':    (dvfs.make_intel_hwp('P',   temporal_mode='oracle_heuristic'), policy_args),
         'EWMA_Future_P':         (dvfs.make_ewma_dvfs('P',   temporal_mode='oracle_heuristic'), policy_args),
         'UCB1_Future_P':         (dvfs.make_ucb1_dvfs('P',   temporal_mode='oracle_heuristic'), policy_args),
@@ -275,6 +359,23 @@ def process_workload(wl, ph, pairs, input_path, configs,
             'Model_Greedy_Oracle_k5_P': (dvfs.make_model_1_step_oracle_k('P', k=5), model_policy_args),
             'Model_Global_P':          (dvfs.make_model_global('P'),              model_policy_args),
         })
+        # --- Reactive-axis decision variants (dampening / commitment) ---
+        for w in [5, 10]:
+            p_calls[f'Model_Greedy_Damp{w}_P'] = (
+                dvfs.make_model_1_step_dampened('P', window=w), model_policy_args)
+            p_calls[f'Model_Greedy_Commit{w}_P'] = (
+                dvfs.make_model_1_step_commit('P', window=w), model_policy_args)
+    if forecast_time_mat is not None:
+        # Deployable workload-forecasting DVFS policy: greedy on the forecast tensor,
+        # row i = causal forecast for chunk i (honest; no future PMU peeked).
+        fc_p_args = (*policy_args, forecast_time_mat)
+        p_calls['Model_Forecast_P'] = (dvfs.make_model_1_step_oracle('P'), fc_p_args)
+        # --- Forecast-axis decision variants ---
+        for w in [5, 10]:
+            p_calls[f'Model_Forecast_Damp{w}_P'] = (
+                dvfs.make_model_forecast_dampened('P', window=w), fc_p_args)
+            p_calls[f'Model_Forecast_Commit{w}_P'] = (
+                dvfs.make_model_forecast_commit('P', window=w), fc_p_args)
 
     # 2. E-Core DVFS Policies
     e_calls = {
@@ -285,9 +386,11 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Static_E_4.0GHz':       (dvfs.make_static('E_4.0GHz'),             policy_args),
         # --- Reactive heuristics (decide using prior chunk's proxy) ---
         'Performance_Gov_E':     (dvfs.make_performance_governor('E'),       policy_args),
+        'Powersave_Gov_E':       (dvfs.make_powersave_governor('E'),         policy_args),
         'Ondemand_E':            (dvfs.make_ondemand('E'),                   policy_args),
         'Conservative_E':        (dvfs.make_conservative('E'),               policy_args),
         'Schedutil_PELT_E':      (dvfs.make_schedutil_pelt('E'),            policy_args),
+        'Interactive_E':         (dvfs.make_interactive('E'),                policy_args),
         'Intel_HWP_E':           (dvfs.make_intel_hwp('E'),                  policy_args),
         'EWMA_E':                (dvfs.make_ewma_dvfs('E'),                  policy_args),
         'UCB1_E':                (dvfs.make_ucb1_dvfs('E'),                  policy_args),
@@ -297,6 +400,7 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Ondemand_Future_E':     (dvfs.make_ondemand('E',     temporal_mode='oracle_heuristic'), policy_args),
         'Conservative_Future_E': (dvfs.make_conservative('E', temporal_mode='oracle_heuristic'), policy_args),
         'Schedutil_Future_E':    (dvfs.make_schedutil_pelt('E', temporal_mode='oracle_heuristic'), policy_args),
+        'Interactive_Future_E':  (dvfs.make_interactive('E', temporal_mode='oracle_heuristic'), policy_args),
         'Intel_HWP_Future_E':    (dvfs.make_intel_hwp('E',   temporal_mode='oracle_heuristic'), policy_args),
         'EWMA_Future_E':         (dvfs.make_ewma_dvfs('E',   temporal_mode='oracle_heuristic'), policy_args),
         'UCB1_Future_E':         (dvfs.make_ucb1_dvfs('E',   temporal_mode='oracle_heuristic'), policy_args),
@@ -317,6 +421,56 @@ def process_workload(wl, ph, pairs, input_path, configs,
             'Model_Greedy_Oracle_k5_E': (dvfs.make_model_1_step_oracle_k('E', k=5), e_model_policy_args),
             'Model_Global_E':          (dvfs.make_model_global('E'),              e_model_policy_args),
         })
+        # --- Reactive-axis decision variants (dampening / commitment) ---
+        for w in [5, 10]:
+            e_calls[f'Model_Greedy_Damp{w}_E'] = (
+                dvfs.make_model_1_step_dampened('E', window=w), e_model_policy_args)
+            e_calls[f'Model_Greedy_Commit{w}_E'] = (
+                dvfs.make_model_1_step_commit('E', window=w), e_model_policy_args)
+    if e_forecast_time_mat is not None:
+        fc_e_args = (*policy_args, e_forecast_time_mat)
+        e_calls['Model_Forecast_E'] = (dvfs.make_model_1_step_oracle('E'), fc_e_args)
+        # --- Forecast-axis decision variants ---
+        for w in [5, 10]:
+            e_calls[f'Model_Forecast_Damp{w}_E'] = (
+                dvfs.make_model_forecast_dampened('E', window=w), fc_e_args)
+            e_calls[f'Model_Forecast_Commit{w}_E'] = (
+                dvfs.make_model_forecast_commit('E', window=w), fc_e_args)
+
+    if fc_un_p_mat is not None:
+        # Phase-UNAWARE forecast: identical policy, forecaster trained without phase
+        # segmentation. Paired with Model_Forecast_P this isolates the scheduling value
+        # of phase-awareness, which the standalone MAPE study cannot show.
+        p_calls['Model_Forecast_Unaware_P'] = (dvfs.make_model_1_step_oracle('P'),
+                                               (*policy_args, fc_un_p_mat))
+    if fc_g_p_mat is not None:
+        p_calls['Model_Forecast_Gated_P'] = (dvfs.make_model_1_step_oracle('P'),
+                                             (*policy_args, fc_g_p_mat))
+    if forecast_oracle_gated_mat is not None:
+        p_calls['Forecast_Oracle_Gated_P'] = (dvfs.make_model_1_step_oracle('P'),
+                                              (*policy_args, forecast_oracle_gated_mat))
+    if forecast_oracle_mat is not None:
+        fo_args = (*policy_args, forecast_oracle_mat)
+        p_calls['Forecast_Oracle_P'] = (dvfs.make_model_1_step_oracle('P'), fo_args)
+    if forecast_oracle_unaware_mat is not None:
+        p_calls['Forecast_Oracle_Unaware_P'] = (dvfs.make_model_1_step_oracle('P'),
+                                                (*policy_args, forecast_oracle_unaware_mat))
+
+    if fc_un_e_mat is not None:
+        e_calls['Model_Forecast_Unaware_E'] = (dvfs.make_model_1_step_oracle('E'),
+                                               (*policy_args, fc_un_e_mat))
+    if fc_g_e_mat is not None:
+        e_calls['Model_Forecast_Gated_E'] = (dvfs.make_model_1_step_oracle('E'),
+                                             (*policy_args, fc_g_e_mat))
+    if forecast_oracle_gated_mat is not None:
+        e_calls['Forecast_Oracle_Gated_E'] = (dvfs.make_model_1_step_oracle('E'),
+                                              (*policy_args, forecast_oracle_gated_mat))
+    if forecast_oracle_mat is not None:
+        e_calls['Forecast_Oracle_E'] = (dvfs.make_model_1_step_oracle('E'),
+                                        (*policy_args, forecast_oracle_mat))
+    if forecast_oracle_unaware_mat is not None:
+        e_calls['Forecast_Oracle_Unaware_E'] = (dvfs.make_model_1_step_oracle('E'),
+                                                (*policy_args, forecast_oracle_unaware_mat))
 
     # 3. Heterogeneous Scheduling Policies (P vs E)
     hetero_calls = {
@@ -350,20 +504,98 @@ def process_workload(wl, ph, pairs, input_path, configs,
             hetero_calls[f'IsoFreq_Model_Oracle_{freq}'] = (sched.make_isofreq_model_oracle(freq), cross_proc_args)
             for k in [1, 2, 5]:
                 hetero_calls[f'IsoFreq_Model_Oracle_k{k}_{freq}'] = (sched.make_isofreq_model_oracle_k(freq, k=k), cross_proc_args)
-            for h in [5, 10]:
+            for h in [5, 10, 20, 50, 100]:
                 hetero_calls[f'IsoFreq_Model_MPC_Oracle_W{h}_{freq}'] = (sched.make_isofreq_model_mpc_oracle(freq, horizon=h), cross_proc_args)
             for w in [5, 10]:
                 hetero_calls[f'Model_IsoFreq_Damp{w}_{freq}'] = (sched.make_isofreq_model_dampened(freq, window=w), cross_proc_args)
+            for w in [5, 10]:
+                hetero_calls[f'Model_IsoFreq_Commit{w}_{freq}'] = (sched.make_isofreq_model_commit(freq, window=w), cross_proc_args)
+    if cross_proc_forecast_time_mat is not None:
+        # Deployable cross-proc (migration) FORECAST: row i = causal forecast of the target-core
+        # config from current-core history. make_isofreq_model_oracle reads row i (honest here).
+        cp_fc_args = (*policy_args, cross_proc_forecast_time_mat)
+        for freq in ['1.0GHz', '2.0GHz', '3.0GHz', '4.0GHz']:
+            hetero_calls[f'Model_IsoFreq_Forecast_{freq}'] = (sched.make_isofreq_model_oracle(freq), cp_fc_args)
+            for w in [5, 10]:
+                hetero_calls[f'Model_IsoFreq_Forecast_Damp{w}_{freq}'] = (
+                    sched.make_isofreq_model_forecast_dampened(freq, window=w), cp_fc_args)
+            for w in [5, 10]:
+                hetero_calls[f'Model_IsoFreq_Forecast_Commit{w}_{freq}'] = (
+                    sched.make_isofreq_model_forecast_commit(freq, window=w), cp_fc_args)
     if full_model_time_mat is not None:
         full_model_args = (*policy_args, full_model_time_mat)
         hetero_calls['Model_Reactive_Hetero']        = (sched.make_hetero_model_reactive(), full_model_args)
         hetero_calls['Model_Greedy_Oracle_Hetero']   = (sched.make_hetero_model_oracle(),   full_model_args)
         for k in [1, 2, 5]:
             hetero_calls[f'Model_Greedy_Oracle_k{k}_Hetero'] = (sched.make_hetero_model_oracle_k(k=k), full_model_args)
-        for h in [5, 10]:
-            hetero_calls[f'Model_MPC_Oracle_W{h}_Hetero'] = (sched.make_hetero_model_mpc_oracle(horizon=h), full_model_args)
+        # Reactive-axis decision variants. These read the MODEL tensor, so they belong
+        # here and not under the forecast guard.
         for w in [5, 10]:
             hetero_calls[f'Model_Reactive_Damp{w}_Hetero'] = (sched.make_hetero_model_dampened(window=w), full_model_args)
+            hetero_calls[f'Model_Reactive_Commit{w}_Hetero'] = (sched.make_hetero_model_commit(window=w), full_model_args)
+        for h in [5, 10]:
+            hetero_calls[f'Model_MPC_Oracle_W{h}_Hetero'] = (sched.make_hetero_model_mpc_oracle(horizon=h), full_model_args)
+    # --- 2x2: which model is responsible for the heterogeneous deficit? ---
+    # Substitute ground truth on one prediction axis at a time. Reactive temporal
+    # throughout, so the only thing varying is which model supplies which entries.
+    #   Oracle x Oracle : the reactive-oracle bound (no model error at all)
+    #   Model  x Oracle : cross-frequency model error only
+    #   Oracle x Model  : cross-processor model error only
+    #   Model  x Model  : == Model_Reactive_Hetero (both), for reference
+    if model_time_mat is not None and cross_proc_time_mat is not None:
+        # build_oracle_axis_mat returns all 8 source rows (ALL_MODEL_CONFIGS order), but
+        # _load_full_model_time_mat consumes the cross-frequency tensors per core: a
+        # 4-row P-source tensor and a 4-row E-source tensor. Slice accordingly. Passing
+        # the 8-row tensor straight through hands the P-source rows the E-source data,
+        # which leaves every P->P frequency entry at 1e6 and silently removes P-core
+        # DVFS from the action space.
+        _cf_oracle = build_oracle_axis_mat(time_mat, configs, min_len, 'cross_freq')
+        _cp_oracle = build_oracle_axis_mat(time_mat, configs, min_len, 'cross_proc')
+        _cf_oracle_p, _cf_oracle_e = _cf_oracle[4:8], _cf_oracle[0:4]
+        _cf_model = (_load_full_model_time_mat(model_time_mat, _cp_oracle, e_model_time_mat)
+                     if e_model_time_mat is not None else None)
+        for tag, mat in [
+            ('OracleCF_OracleCP',
+             _load_full_model_time_mat(_cf_oracle_p, _cp_oracle, _cf_oracle_e)),
+            ('ModelCF_OracleCP', _cf_model),
+            ('OracleCF_ModelCP',
+             _load_full_model_time_mat(_cf_oracle_p, cross_proc_time_mat, _cf_oracle_e)),
+        ]:
+            if mat is None:
+                continue
+            hetero_calls[f'Model_Reactive_Hetero_{tag}'] = (
+                sched.make_hetero_model_reactive(), (*policy_args, mat))
+            hetero_calls[f'Model_Oracle_Hetero_{tag}'] = (
+                sched.make_hetero_model_oracle(), (*policy_args, mat))
+
+    if full_forecast_time_mat is not None:
+        # Deployable FORECAST over the full core x freq space: row i = causal forecast.
+        ff_args = (*policy_args, full_forecast_time_mat)
+        hetero_calls['Model_Forecast_Hetero'] = (sched.make_hetero_model_oracle(), ff_args)
+        for w in [5, 10]:
+            hetero_calls[f'Model_Forecast_Damp{w}_Hetero'] = (
+                sched.make_hetero_model_forecast_dampened(window=w), ff_args)
+            hetero_calls[f'Model_Forecast_Commit{w}_Hetero'] = (
+                sched.make_hetero_model_forecast_commit(window=w), ff_args)
+
+    if fc_un_full_mat is not None:
+        hetero_calls['Model_Forecast_Unaware_Hetero'] = (sched.make_hetero_model_oracle(),
+                                                         (*policy_args, fc_un_full_mat))
+    if fc_g_full_mat is not None:
+        hetero_calls['Model_Forecast_Gated_Hetero'] = (sched.make_hetero_model_oracle(),
+                                                       (*policy_args, fc_g_full_mat))
+        for w in [5, 10]:
+            hetero_calls[f'Model_Forecast_Gated_Damp{w}_Hetero'] = (
+                sched.make_hetero_model_forecast_dampened(window=w), (*policy_args, fc_g_full_mat))
+    if forecast_oracle_gated_mat is not None:
+        hetero_calls['Forecast_Oracle_Gated_Hetero'] = (
+            sched.make_hetero_model_oracle(), (*policy_args, forecast_oracle_gated_mat))
+    if forecast_oracle_mat is not None:
+        hetero_calls['Forecast_Oracle_Hetero'] = (sched.make_hetero_model_oracle(),
+                                                  (*policy_args, forecast_oracle_mat))
+    if forecast_oracle_unaware_mat is not None:
+        hetero_calls['Forecast_Oracle_Unaware_Hetero'] = (
+            sched.make_hetero_model_oracle(), (*policy_args, forecast_oracle_unaware_mat))
 
     # 4. Combined DVFS + Migration Policies
     combined_calls = {
@@ -374,6 +606,25 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'MPC_Oracle_Combined_W5': (comb.make_proactive_n_step_combined(horizon=5),  policy_args),
         'MPC_Oracle_Combined_W10':(comb.make_proactive_n_step_combined(horizon=10), policy_args),
     }
+
+    def _trace_from_path(actions, local_names, m):
+        """Trace for a known action path, with the warmup penalty applied if enabled.
+
+        Split out of _apply_warmup_trace so a cached path can be re-scored without
+        re-running the (expensive) full-trace DP.
+        """
+        idx = [configs.index(c) for c in local_names]
+        t_sub = time_mat[:, idx]
+        e_sub = energy_mat[:, idx]
+        lat_sub = trans_lat[np.ix_(idx, idx)]
+        nrg_sub = trans_nrg[np.ix_(idx, idx)]
+        if apply_warmup and not (WARMUP_A_PtoE == 0.0 and WARMUP_A_EtoP == 0.0):
+            t_sub = warmup_model.apply_warmup_penalty(
+                t_sub, actions, local_names,
+                WARMUP_A_PtoE, WARMUP_TAU_PtoE,
+                WARMUP_A_EtoP, WARMUP_TAU_EtoP, WARMUP_K,
+            )
+        return accumulate_trace(t_sub, e_sub, lat_sub, nrg_sub, actions, metric=m)
 
     def _apply_warmup_trace(fn, args_, m):
         """Run policy, apply cache-warmup penalty to cross-cluster migrations, recompute trace."""
@@ -400,32 +651,50 @@ def process_workload(wl, ph, pairs, input_path, configs,
         """Evaluate all policies, using dual-metric fast path for metric-independent ones."""
         for name, (fn, args_) in calls.items():
             if getattr(fn, 'metric_independent', False):
-                # Single-cluster DVFS only — no P↔E migrations, warmup never fires.
-                traces = fn(*args_, metrics=METRICS)
-                for m, tr in traces.items():
-                    traces_by_metric[m][name] = tr
-            elif getattr(fn, 'is_viterbi_oracle', False):
+                # Dual-metric fast path: one action sequence, scored under both metrics.
+                # Warmup must still be charged -- the heterogeneous heuristics are
+                # metric-independent AND migrate, so skipping it here scored them with
+                # no cache-warmup penalty while every model policy paid one.
+                traces, actions, local_names = fn(*args_, metrics=METRICS, _return_actions=True)
+                st = compute_trace_stats(list(actions), local_names)
                 for m in METRICS:
-                    if apply_warmup and getattr(fn, 'returns_actions', False):
-                        # Warmup: bypass cache — recompute path and penalize it.
-                        # Note: the DP found the warmup-unaware optimal path, so this
-                        # is a conservative bound (oracle that ignores warmup in planning).
-                        tr, st = _apply_warmup_trace(fn, args_, m)
-                        traces_by_metric[m][name] = tr
-                        _record_diag(diag_results, wl, ph, m, name, st)
-                    elif viterbi_cache_dir is not None:
-                        cache_file = viterbi_cache_dir / f"{wl}__{ph}__{name}__{m}.npy"
-                        if cache_file.exists():
-                            traces_by_metric[m][name] = np.load(cache_file)
-                        else:
-                            tr, st = _call_with_stats(fn, *args_, metric=m)
-                            traces_by_metric[m][name] = tr
-                            np.save(cache_file, tr)
-                            _record_diag(diag_results, wl, ph, m, name, st)
-                    else:
-                        tr, st = _call_with_stats(fn, *args_, metric=m)
-                        traces_by_metric[m][name] = tr
-                        _record_diag(diag_results, wl, ph, m, name, st)
+                    traces_by_metric[m][name] = (_trace_from_path(actions, local_names, m)
+                                                 if apply_warmup else traces[m])
+                    _record_diag(diag_results, wl, ph, m, name, st)
+            elif getattr(fn, 'is_viterbi_oracle', False):
+                # Full-trace DP: the expensive path. Cache the ACTION PATH rather than
+                # the trace, so the cache is reusable when --apply_warmup is on (the DP
+                # is warmup-unaware by design, so the path is identical either way and
+                # only the re-scoring differs). Caching the trace instead made the cache
+                # dead for every warmup run, which is every run in the chapter.
+                #
+                # Model-based Viterbi (Model_Global_*) depends on the prediction tensor,
+                # so its key carries the prediction-set tag. A true oracle's path depends
+                # only on the traces and is shared across prediction sets.
+                # The DP optimizes E*T^p over the traces, so its path depends on the
+                # trace set AND on --power_mode (which defines energy_mat). Neither was
+                # in the key. Model-based Viterbi additionally depends on the prediction
+                # set. Warmup is NOT in the key: the DP is warmup-unaware by design, so
+                # the path is identical either way and only the re-scoring differs.
+                tag = env_tag if not getattr(fn, 'uses_model', False) else f'{env_tag}-{pred_tag}'
+                for m in METRICS:
+                    cache_file = (viterbi_cache_dir / f"{wl}__{ph}__{name}__{tag}__{m}.npz"
+                                  if viterbi_cache_dir is not None else None)
+                    actions = local_names = None
+                    if cache_file is not None and cache_file.exists():
+                        try:
+                            z = np.load(cache_file, allow_pickle=False)
+                            actions, local_names = z['actions'], [str(x) for x in z['names']]
+                        except Exception:
+                            actions = local_names = None
+                    if actions is None:
+                        _tr, actions, local_names = fn(*args_, _return_actions=True, metric=m)
+                        if cache_file is not None:
+                            np.savez(cache_file, actions=np.asarray(actions),
+                                     names=np.array(local_names, dtype='U16'))
+                    st = compute_trace_stats(list(actions), local_names)
+                    traces_by_metric[m][name] = _trace_from_path(actions, local_names, m)
+                    _record_diag(diag_results, wl, ph, m, name, st)
             elif apply_warmup and getattr(fn, 'returns_actions', False):
                 for m in METRICS:
                     tr, st = _apply_warmup_trace(fn, args_, m)
@@ -466,6 +735,15 @@ def process_workload(wl, ph, pairs, input_path, configs,
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--input_dir', type=str, required=True)
+    parser.add_argument('--exclude_workloads', type=str, default='',
+                        help="Comma-separated workload names to skip entirely. Use to drop "
+                             "workloads with known-incomplete prediction sets so the rest of "
+                             "the run can keep --strict_predictions on rather than silently "
+                             "falling back to oracle times for them.")
+    parser.add_argument('--limit', type=int, default=0,
+                        help="Process at most N workload-phases. For smoke tests: a full "
+                             "run is 147 phases and takes hours, so --limit 6 exercises "
+                             "every code path in minutes.")
     parser.add_argument('--output_dir', type=str, required=True)
     parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
                          help="'per_sample' uses measured per-chunk power (default); "
@@ -478,6 +756,46 @@ def main():
                         help="Directory with precomputed E-core cross-freq model predictions "
                              "(output of cross_freq_precompute.py --core_type E). When provided, adds "
                              "Model_Greedy_E, Model_Greedy_Oracle_E, Model_Global_E policies.")
+    parser.add_argument('--strict_predictions', action='store_true',
+                        help="Abort if any prediction file is missing instead of silently "
+                             "substituting oracle times. Use whenever a prediction dir is "
+                             "passed and expected to be complete: the fallback otherwise "
+                             "fabricates a model result that looks like a real one.")
+    parser.add_argument('--cross_freq_p_forecast_dir', type=str, default=None,
+                        help="Directory with WALK-FORWARD forecast predictions (dump_dvfs_forecast.py), "
+                             "P-core. Each row i is a causal forecast for chunk i. Adds Model_Forecast_P.")
+    parser.add_argument('--cross_freq_e_forecast_dir', type=str, default=None,
+                        help="Directory with WALK-FORWARD forecast predictions (dump_dvfs_forecast.py), "
+                             "E-core. Adds Model_Forecast_E.")
+    parser.add_argument('--cross_freq_p_forecast_gated_dir', type=str, default=None,
+                        help="GATED P-core cross-freq forecasts (dump with --gate persist): the "
+                             "forecaster defers to persistence per chunk unless it has been "
+                             "beating it on recent history. Adds Model_Forecast_Gated_P.")
+    parser.add_argument('--cross_freq_e_forecast_gated_dir', type=str, default=None,
+                        help="GATED E-core cross-freq forecasts. Adds Model_Forecast_Gated_E.")
+    parser.add_argument('--cross_proc_forecast_gated_dir', type=str, default=None,
+                        help="GATED cross-processor forecasts. Adds Model_Forecast_Gated_Hetero.")
+    parser.add_argument('--forecast_oracle_gated_dir', type=str, default=None,
+                        help="GATED self-forecasts. Adds Forecast_Oracle_Gated_*.")
+    parser.add_argument('--cross_freq_p_forecast_unaware_dir', type=str, default=None,
+                        help="Phase-UNAWARE P-core cross-freq forecasts (dump with "
+                             "--method global). Adds Model_Forecast_Unaware_P.")
+    parser.add_argument('--cross_freq_e_forecast_unaware_dir', type=str, default=None,
+                        help="Phase-UNAWARE E-core cross-freq forecasts. Adds "
+                             "Model_Forecast_Unaware_E.")
+    parser.add_argument('--cross_proc_forecast_unaware_dir', type=str, default=None,
+                        help="Phase-UNAWARE cross-processor forecasts. With the two "
+                             "cross-freq unaware dirs, adds Model_Forecast_Unaware_Hetero.")
+    parser.add_argument('--forecast_oracle_unaware_dir', type=str, default=None,
+                        help="Phase-UNAWARE self-forecasts. Adds Forecast_Oracle_Unaware_*.")
+    parser.add_argument('--forecast_oracle_dir', type=str, default=None,
+                        help="Directory of self-forecasts (dump_dvfs_forecast.py --mode "
+                             "self_forecast): {config}/{wl}_phase{n}.csv with Time_pred_{config}. "
+                             "Adds Forecast_Oracle_{P,E,Hetero} -- the forecast-with-perfect-"
+                             "translation bound, which isolates forecast error from model error.")
+    parser.add_argument('--cross_proc_forecast_dir', type=str, default=None,
+                        help="Directory with WALK-FORWARD cross-proc forecast predictions "
+                             "(dump_dvfs_forecast.py --target_core). Adds Model_IsoFreq_Forecast_{freq}.")
     parser.add_argument('--cross_proc_pred_dir', type=str, default=None,
                         help="Directory with precomputed cross-proc model predictions "
                              "(output of cross_proc_precompute.py). When provided, adds "
@@ -501,7 +819,28 @@ def main():
                         help="Target architecture: 'x86' (P/E cores) or 'arm_edge' (L/B cores)")
     args = parser.parse_args()
 
+    # Missing prediction files silently become oracle times, which makes a model
+    # policy indistinguishable from its oracle. Count them always; abort on them
+    # when the caller asserts the prediction set should be complete.
+    data_loader.STRICT_PREDICTIONS = args.strict_predictions
+    data_loader.reset_fallback_counts()
+
     import pandas as pd
+
+    # Identity of the prediction set feeding the model policies. Model-based Viterbi
+    # results depend on it, so it keys their cache entries: without this, running cap5
+    # against a cache populated by the raw run would silently return raw's Model_Global_*.
+    _pred_srcs = [args.cross_freq_p_pred_dir, args.cross_freq_e_pred_dir,
+                  args.cross_proc_pred_dir, args.cross_freq_p_forecast_dir,
+                  args.cross_freq_e_forecast_dir, args.cross_proc_forecast_dir]
+    pred_tag = hashlib.md5('|'.join(str(x) for x in _pred_srcs).encode()).hexdigest()[:8]
+    # Everything a TRUE-oracle Viterbi path depends on: the traces it reads and the
+    # power model that turns them into energy.
+    # Bump VITERBI_CACHE_VERSION whenever the DP or the start convention changes:
+    # env_tag covers the data a path depends on, not the code that produced it, so a
+    # stale cache would otherwise silently return paths from the previous semantics.
+    env_tag = hashlib.md5(
+        f'{args.input_dir}|{args.power_mode}|v{VITERBI_CACHE_VERSION}'.encode()).hexdigest()[:8]
 
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
@@ -509,6 +848,18 @@ def main():
     cross_freq_p_pred_dir = Path(args.cross_freq_p_pred_dir) if args.cross_freq_p_pred_dir else None
     cross_freq_e_pred_dir = Path(args.cross_freq_e_pred_dir) if args.cross_freq_e_pred_dir else None
     cross_proc_pred_dir = Path(args.cross_proc_pred_dir) if args.cross_proc_pred_dir else None
+    cross_freq_p_forecast_unaware_dir = Path(args.cross_freq_p_forecast_unaware_dir) if args.cross_freq_p_forecast_unaware_dir else None
+    cross_freq_e_forecast_unaware_dir = Path(args.cross_freq_e_forecast_unaware_dir) if args.cross_freq_e_forecast_unaware_dir else None
+    cross_proc_forecast_unaware_dir = Path(args.cross_proc_forecast_unaware_dir) if args.cross_proc_forecast_unaware_dir else None
+    forecast_oracle_unaware_dir = Path(args.forecast_oracle_unaware_dir) if args.forecast_oracle_unaware_dir else None
+    cross_freq_p_forecast_gated_dir = Path(args.cross_freq_p_forecast_gated_dir) if args.cross_freq_p_forecast_gated_dir else None
+    cross_freq_e_forecast_gated_dir = Path(args.cross_freq_e_forecast_gated_dir) if args.cross_freq_e_forecast_gated_dir else None
+    cross_proc_forecast_gated_dir = Path(args.cross_proc_forecast_gated_dir) if args.cross_proc_forecast_gated_dir else None
+    forecast_oracle_gated_dir = Path(args.forecast_oracle_gated_dir) if args.forecast_oracle_gated_dir else None
+    forecast_oracle_dir = Path(args.forecast_oracle_dir) if args.forecast_oracle_dir else None
+    cross_freq_p_forecast_dir = Path(args.cross_freq_p_forecast_dir) if args.cross_freq_p_forecast_dir else None
+    cross_freq_e_forecast_dir = Path(args.cross_freq_e_forecast_dir) if args.cross_freq_e_forecast_dir else None
+    cross_proc_forecast_dir = Path(args.cross_proc_forecast_dir) if args.cross_proc_forecast_dir else None
     viterbi_cache_dir = Path(args.viterbi_cache_dir) if args.viterbi_cache_dir else None
     if viterbi_cache_dir is not None:
         viterbi_cache_dir.mkdir(parents=True, exist_ok=True)
@@ -518,16 +869,40 @@ def main():
         configs = ['L_1.0GHz', 'B_1.0GHz']
     else:
         pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
-        configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz', 'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz', 'P_5.0GHz']
+        configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz',
+                   'P_1.0GHz', 'P_2.0GHz', 'P_3.0GHz', 'P_4.0GHz']
     pairs = set(m.groups()[1:] for f in input_path.glob("speedups_*.csv") if (m := pattern.search(f.name)))
+    if args.exclude_workloads:
+        drop = {w.strip() for w in args.exclude_workloads.split(',') if w.strip()}
+        before = len(pairs)
+        pairs = {(wl, ph) for wl, ph in pairs if wl not in drop}
+        print(f"--exclude_workloads: dropped {before - len(pairs)} phases "
+              f"from {len(drop)} workloads -> {len(pairs)} remain")
+    if args.limit:
+        pairs = set(sorted(pairs)[:args.limit])
+        print(f"--limit {args.limit}: processing {len(pairs)} workload-phases (smoke test)")
 
     common_kwargs = dict(
         power_mode=args.power_mode,
         cross_freq_p_pred_dir=cross_freq_p_pred_dir,
         cross_freq_e_pred_dir=cross_freq_e_pred_dir,
         cross_proc_pred_dir=cross_proc_pred_dir,
+        cross_freq_p_forecast_dir=cross_freq_p_forecast_dir,
+        cross_freq_e_forecast_dir=cross_freq_e_forecast_dir,
+        cross_proc_forecast_dir=cross_proc_forecast_dir,
+        forecast_oracle_dir=forecast_oracle_dir,
+        cross_freq_p_forecast_unaware_dir=cross_freq_p_forecast_unaware_dir,
+        cross_freq_e_forecast_unaware_dir=cross_freq_e_forecast_unaware_dir,
+        cross_proc_forecast_unaware_dir=cross_proc_forecast_unaware_dir,
+        forecast_oracle_unaware_dir=forecast_oracle_unaware_dir,
+        cross_freq_p_forecast_gated_dir=cross_freq_p_forecast_gated_dir,
+        cross_freq_e_forecast_gated_dir=cross_freq_e_forecast_gated_dir,
+        cross_proc_forecast_gated_dir=cross_proc_forecast_gated_dir,
+        forecast_oracle_gated_dir=forecast_oracle_gated_dir,
         viterbi_cache_dir=viterbi_cache_dir,
         apply_warmup=args.apply_warmup,
+        pred_tag=pred_tag,
+        env_tag=env_tag,
     )
 
     if args.cross_phase:
@@ -564,6 +939,11 @@ def main():
     if all_summary:
         df = pd.DataFrame(all_summary)
         print(f"\nSimulation complete. Generating plots and CSVs...")
+        _fb = data_loader.fallback_report()
+        if _fb:
+            print("\n" + "=" * 78)
+            print(_fb)
+            print("=" * 78 + "\n")
         plotter.generate_all_plots(df, output_path)
         if all_diag:
             diag_df = pd.DataFrame(all_diag)

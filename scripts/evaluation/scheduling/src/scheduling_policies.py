@@ -453,6 +453,60 @@ def make_isofreq_model_oracle_k(target_freq, k=1):
     )
 
 
+def make_isofreq_model_forecast_dampened(target_freq, window=10):
+    """Cross-proc FORECAST (oracle temporal = row i = causal forecast) with
+    rolling-window variance dampening. Smooths forecast volatility so a transient
+    predicted spike does not trigger a costly migration -- combines the forecast's
+    trajectory signal with the anti-chatter hysteresis of the dampened policy."""
+    def idx_list_fn(configs, valid_configs):
+        return sorted([
+            configs.index(c) for c in valid_configs
+            if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS
+        ])
+
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=start_idx_fn,
+        dampen_window=window,
+    )
+
+
+def _isofreq_idx_fns(target_freq):
+    def idx_list_fn(configs, valid_configs):
+        return sorted([configs.index(c) for c in valid_configs
+                       if c.endswith(target_freq) and c in ALL_MODEL_CONFIGS])
+    def start_idx_fn(idx_list, valid_configs):
+        return len(idx_list) - 1
+    return idx_list_fn, start_idx_fn
+
+
+def make_isofreq_model_commit(target_freq, window=5):
+    """Reactive cross-proc model with a COMMITMENT WINDOW: re-decide only every
+    `window` chunks (holding the config in between). The reactive baseline for the
+    commitment-window experiment -- it commits based on a single stale chunk (i-1)."""
+    idx_list_fn, start_idx_fn = _isofreq_idx_fns(target_freq)
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn, decision_mode='greedy', temporal='reactive',
+        src_idx_fn=_src_cfg_idx, start_idx_fn=start_idx_fn, commit_window=window)
+
+
+def make_isofreq_model_forecast_commit(target_freq, window=5):
+    """FORECAST cross-proc model with a COMMITMENT WINDOW: re-decide every `window`
+    chunks using the horizon-`window` forecast (which represents the whole window),
+    holding in between. This is where the multi-step forecast should beat reactive:
+    reactive commits on a stale point, the forecast commits on the predicted window."""
+    idx_list_fn, start_idx_fn = _isofreq_idx_fns(target_freq)
+    return make_model_policy_from_idx_list(
+        idx_list_fn=idx_list_fn, decision_mode='greedy', temporal='oracle',
+        src_idx_fn=_src_cfg_idx, start_idx_fn=start_idx_fn, commit_window=window)
+
+
 def make_isofreq_model_dampened(target_freq, window=10):
     """Cross-proc model with rolling-window variance dampening.
     Reactive temporal; blends predictions toward rolling mean when volatile."""
@@ -599,6 +653,47 @@ def make_hetero_model_dampened(window=10):
         src_idx_fn=_src_cfg_idx,
         start_idx_fn=_p_max_start_idx,
         dampen_window=window,
+    )
+
+
+def make_hetero_model_forecast_dampened(window=10):
+    """Full P+E FORECAST (row i = causal forecast) with rolling-window dampening:
+    the forecast's anticipation plus anti-chatter hysteresis, over all 8 configs."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+        dampen_window=window,
+    )
+
+
+def make_hetero_model_commit(window=5):
+    """Full P+E model (reactive) holding its selected config for `window` chunks.
+
+    Coarser anti-chatter than dampening: suppresses migrations without needing a
+    variance estimate, at the cost of ignoring genuine phase changes mid-window.
+    """
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='reactive',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+        commit_window=window,
+    )
+
+
+def make_hetero_model_forecast_commit(window=5):
+    """Full P+E FORECAST (row i = causal forecast) with a commitment window."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        decision_mode='greedy',
+        temporal='oracle',
+        src_idx_fn=_src_cfg_idx,
+        start_idx_fn=_p_max_start_idx,
+        commit_window=window,
     )
 
 

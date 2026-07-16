@@ -18,13 +18,30 @@ def apply_warmup_penalty(time_mat, policy_path, configs,
     slowdown model: time[i+k] *= 1 + A * exp(-k / tau)  for k in [0, K)
     """
     penalized = time_mat.copy()
-    for i in range(1, len(policy_path)):
-        prev_core = configs[policy_path[i - 1]][0]   # 'P' or 'E'
-        curr_core = configs[policy_path[i]][0]
-        if prev_core == curr_core:
-            continue
-        A   = A_PtoE   if prev_core == 'P' else A_EtoP
-        tau = tau_PtoE if prev_core == 'P' else tau_EtoP
-        for k in range(min(K, len(policy_path) - i)):
-            penalized[i + k, policy_path[i + k]] *= (1.0 + A * np.exp(-k / tau))
+    path = np.asarray(policy_path)
+    n = len(path)
+    if n < 2 or (A_PtoE == 0.0 and A_EtoP == 0.0):
+        return penalized
+
+    # Core letter ('P'/'E') of the config chosen at each chunk.
+    core = np.array([configs[a][0] for a in path])
+    migrated = np.flatnonzero(core[1:] != core[:-1]) + 1   # chunk indices of a migration
+    if migrated.size == 0:
+        return penalized
+
+    # Per-migration amplitude/decay, selected by the direction left behind.
+    from_p = core[migrated - 1] == 'P'
+    amps = np.where(from_p, A_PtoE, A_EtoP)
+    taus = np.where(from_p, tau_PtoE, tau_EtoP)
+
+    # Multiplicative factor per (migration, offset k), scattered onto the chunks the
+    # policy actually occupies. Overlapping warmups compound, matching the original
+    # loop: two migrations K chunks apart penalize the shared chunks twice.
+    rows = np.arange(n)
+    factor = np.ones(n)
+    ks = np.arange(K)
+    for m_i, (mi, A, tau) in enumerate(zip(migrated, amps, taus)):
+        span = min(K, n - mi)
+        factor[mi:mi + span] *= (1.0 + A * np.exp(-ks[:span] / tau))
+    penalized[rows, path] = time_mat[rows, path] * factor
     return penalized

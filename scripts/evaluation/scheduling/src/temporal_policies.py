@@ -46,23 +46,10 @@ def reactive_signal_window(proxy_signal, i, window_size):
     start = max(0, i - window_size)
     return proxy_signal[start:i]
 
-
-# ---------------------------------------------------------------------------
-# Forecast (imperfect future prediction) - STUB ONLY, not wired into main.py.
-#
-# TODO (future work): a forecasting model would predict future chunks'
-# time_mat/energy_mat rows from past data, then this function would return
-# those *predicted* values in the same shape as oracle_window_raw. Decision
-# functions (decide_greedy/decide_mpc) could then be reused unchanged, since
-# they only care about the shape of the window, not whether it is real
-# ("Oracle") or predicted ("Forecast") data.
-#
-# Forecast x Global is excluded by design: a full-trace Viterbi DP
-# (decide_global) requires ground-truth future data for every chunk, which
-# is precisely what "imperfect prediction" cannot provide.
-# ---------------------------------------------------------------------------
-def forecast_window_raw(time_mat, energy_mat, i, window_size):
-    raise NotImplementedError(
-        "Forecast (imperfect future prediction) is not yet implemented. "
-        "See module docstring in temporal_policies.py."
-    )
+# Note: workload forecasting is NOT implemented here. It is applied upstream, by
+# swapping in a forecast tensor whose row i holds a causal forecast of chunk i
+# (see main.py's *_forecast_dir handling). The decision functions are then reused
+# unchanged, since they only care about the window's shape, not whether it holds
+# measured or predicted values. A "Forecast x Global" cell does not exist by
+# design: a full-trace Viterbi DP requires ground truth for every chunk, which is
+# exactly what an imperfect prediction cannot supply.

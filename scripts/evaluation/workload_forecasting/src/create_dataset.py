@@ -167,9 +167,15 @@ _SPEC_NUM_RE = re.compile(r'^spec_(\d+)\.')
 
 def _bench_suite_dir_cross_freq(bench_name):
     """Suite subdirectory in the cross-frequency model tree.
-    dacapo uses the pruned model variant; spec_2026 has no cross-freq models."""
+
+    dacapo uses the unpruned dacapo_c1 tree. The pruned variant covers only 17 of
+    the 22 dacapo benchmarks (it lacks cassandra, h2o, kafka, tradebeans, tradesoap),
+    so pointing here at dacapo_c1_pruned silently yielded no translator for those
+    five, which made the dump skip them, which made the simulator substitute oracle
+    times for them -- reading as a near-perfect model result rather than an error.
+    """
     if bench_name.startswith('dacapo_'):
-        return 'dacapo_c1_pruned'
+        return 'dacapo_c1'
     m = _SPEC_NUM_RE.match(bench_name)
     if m:
         return 'spec_2026' if int(m.group(1)) >= 700 else 'spec_2017'
@@ -240,6 +246,45 @@ def _translate_ref_cycles(cbm, full_df, features=None):
     return translated.round().astype(np.int64)
 
 
+def _bench_suite_dir_ct(bench_name):
+    """Suite label used in the counter_translation tree (spec2017/spec2026/dacapo)."""
+    if bench_name.startswith('dacapo'):
+        return 'dacapo'
+    m = _SPEC_NUM_RE.match(bench_name)
+    if m:
+        return 'spec2026' if int(m.group(1)) >= 700 else 'spec2017'
+    return None
+
+
+def _load_cbm_counter(counter_dir, counter, src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name):
+    """Load a per-counter (e.g. cpu_cycles) cross-proc translator from the
+    counter_translation tree, or None if not found."""
+    suite = _bench_suite_dir_ct(bench_name)
+    if suite is None:
+        return None
+    path = os.path.join(
+        counter_dir, f'cpu{src_cpu}_to_cpu{tgt_cpu}', suite, counter, 'top4',
+        f'cpu{src_cpu}_{src_freq}GHz_to_cpu{tgt_cpu}_{tgt_freq}GHz',
+        f'model_{bench_name}.cbm'
+    )
+    if not os.path.exists(path):
+        return None
+    m = _CatBoost()
+    m.load_model(path)
+    return m
+
+
+def _translate_counter(cbm, full_df, counter):
+    """translated = exp(predicted log-ratio) * source[counter]; int64 array or None."""
+    features = list(cbm.feature_names_)
+    if not all(f in full_df.columns for f in features):
+        return None
+    src = full_df[counter].values
+    mask = src > 0
+    pred_log_ratio = cbm.predict(full_df[features])
+    return np.where(mask, np.exp(pred_log_ratio) * src, src).round().astype(np.int64)
+
+
 def apply_heterogeneous_history(args, train_data):
     """
     With probability args.heterogeneous_prob, replace each row of the
@@ -271,6 +316,7 @@ def apply_heterogeneous_history(args, train_data):
 
     cbm_model_dir      = getattr(args, 'cbm_model_dir', None)
     cbm_cross_proc_dir = getattr(args, 'cbm_cross_proc_dir', None)
+    cbm_counter_dir    = getattr(args, 'cbm_cross_proc_counter_dir', None)
     mode = args.heterogeneous_mode
 
     use_translation = (
@@ -319,6 +365,7 @@ def apply_heterogeneous_history(args, train_data):
             bench_name = dm.group('rest')
 
             translated_ref = None
+            translated_cpu = None
 
             if use_translation:
                 cbm_key = (src_freq, tgt_freq, bench_name)
@@ -336,10 +383,21 @@ def apply_heterogeneous_history(args, train_data):
                 cbm = cbm_cache[cbm_key]
                 if cbm is not None:
                     translated_ref = _translate_ref_cycles(cbm, full_df)
+                # optionally also translate cpu_cycles across cores (freq-invariant,
+                # so only meaningful when the core changes)
+                if cbm_counter_dir is not None and src_cpu != tgt_cpu:
+                    ck = ('cpu_cycles', src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name)
+                    if ck not in cbm_cache:
+                        cbm_cache[ck] = _load_cbm_counter(
+                            cbm_counter_dir, 'cpu_cycles', src_cpu, src_freq, tgt_cpu, tgt_freq, bench_name
+                        )
+                    ccbm = cbm_cache[ck]
+                    if ccbm is not None:
+                        translated_cpu = _translate_counter(ccbm, full_df, 'cpu_cycles')
 
-            donor_cache[donor_path] = (full_df, src_freq, src_cpu, translated_ref)
+            donor_cache[donor_path] = (full_df, src_freq, src_cpu, translated_ref, translated_cpu)
 
-        full_df, donor_freq, src_cpu, translated_ref = donor_cache[donor_path]
+        full_df, donor_freq, src_cpu, translated_ref, translated_cpu = donor_cache[donor_path]
         row_label = train_data.index[idx]
         row_i     = idx % len(full_df)
         donor_row = full_df.iloc[row_i]
@@ -350,6 +408,8 @@ def apply_heterogeneous_history(args, train_data):
 
         if translated_ref is not None and 'ref_cycles' in counter_cols:
             train_data.loc[row_label, 'ref_cycles'] = translated_ref[row_i]
+        if translated_cpu is not None and 'cpu_cycles' in counter_cols:
+            train_data.loc[row_label, 'cpu_cycles'] = translated_cpu[row_i]
 
         if add_features:
             train_data.loc[row_label, 'het_flag'] = 1

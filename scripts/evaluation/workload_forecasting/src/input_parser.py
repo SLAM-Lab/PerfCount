@@ -48,6 +48,12 @@ def set_preprocess_args(parser):
 												'(cpu{src}_to_cpu{tgt}/{suite}/top4/cpu{src}_{sf}GHz_to_cpu{tgt}_{tf}GHz/model_{bench}.cbm). '
 												'When set with --heterogeneous_mode cross_proc or cross_proc_freq, translates donor '
 												'ref_cycles to the target CPU/frequency instead of naive swap.')
+	parser.add_argument('--cbm_cross_proc_counter_dir', default=None,
+												help='Path to the per-counter cross-processor translator root '
+												'(counter_translation/cpu{src}_to_cpu{tgt}/{suite}/{counter}/top4/...). '
+												'When set alongside --cbm_cross_proc_dir, ALSO translates cpu_cycles '
+												'across cores (freq-invariant, so only applied when the core changes) '
+												'instead of copying it.')
 	return parser
 
 def supervised_model_args(parser):

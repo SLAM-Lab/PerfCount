@@ -12,10 +12,21 @@ processed_data_100M_power/
 processed_data_1000M/
 power_data_10M/
 raw_data/
+plotting_scripts/
+figures/
+spec_2026/
+
+
 
 # Ignore Python cache files
 __pycache__/
 *.pyc
+
+# Ignore CatBoost training telemetry (regenerated on every training run)
+catboost_info/
+
+# Ignore condensed forecasting result/training CSVs (large, regenerable; kept out per prior cleanup)
+scripts/evaluation/workload_forecasting/**/*.csv
 
 # Ignore VS Code workspace settings
 .vscode/

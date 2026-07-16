@@ -112,6 +112,31 @@ def make_performance_governor(core_type='P'):
 
 
 # ==========================================
+# 5b. LINUX POWERSAVE GOVERNOR (Heuristic, Reactive)
+# ==========================================
+def _decide_heuristic_powersave(ctx, state):
+    return 0, state
+
+
+def _batch_powersave(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
+    return np.zeros(n, dtype=int)
+
+
+def make_powersave_governor(core_type='P'):
+    """Linux 'powersave' CPUfreq governor: always pins to minimum frequency. The
+    fixed-frequency counterpart to the performance governor."""
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode='reactive',
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=_decide_heuristic_powersave,
+        metric_independent=True,
+        batch_decide_fn=_batch_powersave,
+    )
+
+
+# ==========================================
 # 6. INTEL HWP (Heuristic, Reactive)
 # ==========================================
 def _decide_heuristic_intel_hwp(ctx, state):
@@ -279,6 +304,47 @@ def make_ewma_dvfs(core_type, alpha=0.5, temporal_mode='reactive'):
 
 
 # ==========================================
+# 10b. ANDROID INTERACTIVE GOVERNOR (Heuristic, Reactive)
+# ==========================================
+def make_interactive(core_type, target_load=0.80, go_hispeed_load=0.99,
+                     hispeed_level=None, down_delay=1, temporal_mode='reactive'):
+    """
+    Android/mobile 'interactive' CPUfreq governor (Google, 2012; Linux staging).
+    Two mechanisms distinguish it from ondemand and schedutil. It ramps directly to a
+    high-speed level when normalized load exceeds go_hispeed_load, rather than stepping,
+    and it holds the high-speed level for down_delay intervals before ramping down, the
+    above_hispeed_delay hysteresis, so it reacts fast to load rises and slowly to falls.
+    Between spikes it targets target_load, selecting the lowest level that keeps predicted
+    load under that target. Proxy load is normalized as for the other governors.
+    """
+    def decide(ctx, state):
+        n = ctx['sub_t'].shape[1]
+        if ctx['i'] == 0:
+            return ctx['start_idx'], state
+        hi = (n - 1) if hispeed_level is None else int(min(hispeed_level, n - 1))
+        util = np.clip((ctx['proxy_window'][-1] - 1.0) / 2.5, 0.0, 1.0)
+        prev = ctx['prev_idx']
+        hold = int(state.get('hold', 0))
+        if util >= go_hispeed_load:
+            return hi, {'hold': down_delay}
+        target = int(np.clip(np.ceil((util / target_load) * (n - 1)), 0, n - 1))
+        if target >= prev:
+            return target, {'hold': 0}
+        if hold > 0:
+            return prev, {'hold': hold - 1}
+        return target, {'hold': 0}
+
+    return make_policy_from_idx_list(
+        idx_list_fn=_core_idx_list_fn(core_type),
+        temporal_mode=temporal_mode,
+        decision_mode='heuristic',
+        window_size=1,
+        heuristic_fn=decide,
+        metric_independent=True,
+    )
+
+
+# ==========================================
 # 11. UCB1 ONLINE BANDIT DVFS (Heuristic, Reactive)
 # ==========================================
 def make_ucb1_dvfs(core_type, c=1.0, temporal_mode='reactive'):
@@ -339,7 +405,7 @@ def make_ucb1_dvfs(core_type, c=1.0, temporal_mode='reactive'):
 # ==========================================
 
 def _p_model_idx_list_fn():
-    """Restrict action set to P_1.0-4.0GHz (exclude P_5.0GHz and all E-cores)."""
+    """Restrict action set to the P-core frequencies (exclude all E-cores)."""
     def idx_list_fn(configs, valid_configs):
         from data_loader import P_MODEL_FREQS
         allowed = {f"P_{f:.1f}GHz" for f in P_MODEL_FREQS}
@@ -377,6 +443,59 @@ def make_model_1_step_oracle(core_type='P'):
         decision_mode='greedy',
         window_size=1,
         temporal='oracle',
+    )
+
+
+def make_model_1_step_dampened(core_type='P', window=10):
+    """Model-based Greedy (reactive) with rolling-window variance dampening.
+
+    Blends volatile predictions toward their window mean so a transient predicted
+    spike does not trigger a frequency change. DVFS analogue of
+    make_isofreq_model_forecast_dampened.
+    """
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='reactive',
+        dampen_window=window,
+    )
+
+
+def make_model_forecast_dampened(core_type='P', window=10):
+    """Model-based FORECAST (row i = causal forecast) with rolling-window dampening.
+
+    Fed the forecast tensor, temporal='oracle' reads row i, which under that tensor
+    is the causal forecast rather than ground truth.
+    """
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='oracle',
+        dampen_window=window,
+    )
+
+
+def make_model_1_step_commit(core_type='P', window=5):
+    """Model-based Greedy (reactive) holding its choice for `window` chunks."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='reactive',
+        commit_window=window,
+    )
+
+
+def make_model_forecast_commit(core_type='P', window=5):
+    """Model-based FORECAST holding its choice for `window` chunks."""
+    return make_model_policy_from_idx_list(
+        idx_list_fn=_model_idx_list_fn(core_type),
+        decision_mode='greedy',
+        window_size=1,
+        temporal='oracle',
+        commit_window=window,
     )
 
 
