@@ -1,9 +1,16 @@
 import os
 import re
 import glob
+import sys
 import numpy as np
 import pandas as pd
 import src.TimeSeries as ts
+
+# Canonical ref_cycles scheduling-stall repair, shared with the cross-platform
+# training and the scheduling trace generator so every consumer cleans the same way.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', '..', 'cross_platform_prediction'))
+from shared_features import repair_ref_cycles_df
 
 try:
     from catboost import CatBoostRegressor as _CatBoost
@@ -54,6 +61,10 @@ def get_raw_data(args):
         phase_dfs = [pd.read_csv(f) for f in phase_matches]
         common_cols = list(set.intersection(*[set(d.columns) for d in phase_dfs]))
         df = pd.concat([d[common_cols] for d in phase_dfs], ignore_index=True)
+
+    # Repair ref_cycles scheduling-stall artifacts before selecting counters, while
+    # cpu_cycles is still present, so the forecast target is not learned from noise.
+    repair_ref_cycles_df(df)
 
     # 4. Filter for valid requested counters
     valid_counters = [c for c in args.input_counters if c in df.columns]
@@ -358,7 +369,7 @@ def apply_heterogeneous_history(args, train_data):
     for idx in swap_indices:
         donor_path = donors[rng.integers(len(donors))]
         if donor_path not in donor_cache:
-            full_df = _crop(pd.read_csv(donor_path), args).reset_index(drop=True)
+            full_df = _crop(repair_ref_cycles_df(pd.read_csv(donor_path)), args).reset_index(drop=True)
             dm = BENCHMARK_NAME_RE.match(os.path.basename(donor_path).replace('.csv', ''))
             src_freq   = float(dm.group('freq'))
             src_cpu    = dm.group('cpu')

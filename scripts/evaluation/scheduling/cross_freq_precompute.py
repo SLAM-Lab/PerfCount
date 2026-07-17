@@ -90,10 +90,19 @@ def find_workloads(model_dir, pmu_dir=None, cpu_id=None, suite=None):
     return benches
 
 
-def find_phases(pmu_dir, bench, src_freq, cpu_id):
-    """Return dict mapping phase index -> file Path for (bench, src_freq)."""
+def find_phases(pmu_dir, bench, src_freq, cpu_id, suite=None):
+    """Return dict mapping phase index -> file Path for (bench, src_freq).
+
+    Scope to the suite's config subdir when given. Several DaCapo benchmarks appear under
+    both dacapo_c1 and dacapo_c2 with DIFFERENT counter sets (c1 has 36, c2 has 24), so an
+    unscoped rglob mixes configs and feeds the wrong data to a config-specific model. The
+    model is trained per config, so search only that config's subdir.
+    """
+    root = Path(pmu_dir)
+    if suite is not None and (root / suite).is_dir():
+        root = root / suite
     pat = f"aligned_{bench}_{src_freq:.1f}GHz_{cpu_id}_phase*.csv"
-    files = sorted(Path(pmu_dir).rglob(pat))
+    files = sorted(root.rglob(pat))
     phase_map = {}
     for f in files:
         ph_str = f.stem.rsplit("phase", 1)[-1]
@@ -121,7 +130,8 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_freq, prefix):
 
 
 def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
-                   suites=None, max_error_pct=None, input_counters=None):
+                   suites=None, max_error_pct=None, input_counters=None,
+                   feature_set='full', arch='x86'):
     if suites is None:
         suites = ['spec2017']
     if max_error_pct is not None:
@@ -138,7 +148,7 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
 
     bench_to_model_dir = {}
     for suite in suites:
-        suite_model_dir = model_base_dir / cpu_id / suite / "full"
+        suite_model_dir = model_base_dir / cpu_id / suite / feature_set
         if not suite_model_dir.exists():
             print(f"[WARN] Model dir not found for suite '{suite}': {suite_model_dir}")
             continue
@@ -155,6 +165,8 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
 
     for bench, model_dir in bench_to_model_dir.items():
         bench_mapes = []
+        # model_dir is <base>/<cpu>/<suite>/<feature_set>; the suite names the PMU config subdir.
+        bench_suite = model_dir.parent.name
         for src_freq in freqs:
             tgt_freqs = [f for f in freqs if f != src_freq]
             src_ghz = f"{src_freq:.1f}GHz"
@@ -175,7 +187,7 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
             if not models:
                 continue
 
-            phase_map = find_phases(pmu_dir, bench, src_freq, cpu_id)
+            phase_map = find_phases(pmu_dir, bench, src_freq, cpu_id, suite=bench_suite)
             if not phase_map:
                 print(f"  [WARN] No aligned CSVs for {bench} @ {src_ghz}")
                 continue
@@ -216,7 +228,16 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
 
                     # Model predicts log(ref_cycles_tgt / ref_cycles_src) = log(time_tgt/time_src)
                     # Speedup = time_src/time_tgt = 1 / exp(model.predict(X))
-                    pred_time_ratio = np.clip(np.exp(model.predict(X.iloc[:n_out])), 0.2, 5.0)
+                    # Select exactly the features this model was trained on, by name and order.
+                    # X carries every counter; each model (full/top4/top6) wants its own subset,
+                    # and the subset varies by cpu and suite, so align to model.feature_names_.
+                    Xp = X.iloc[:n_out]
+                    want = list(model.feature_names_)
+                    missing = [c for c in want if c not in Xp.columns]
+                    if missing:
+                        raise KeyError(f"{bench} {src_ghz}->{tgt_ghz}: PMU data missing model "
+                                       f"features {missing}")
+                    pred_time_ratio = np.clip(np.exp(model.predict(Xp[want])), 0.2, 5.0)
                     pred_speedup = 1.0 / pred_time_ratio
 
                     # Clamp per-sample error to ±max_error_pct of oracle
@@ -273,11 +294,16 @@ def main():
                         help="Cap per-sample prediction error to ±X%% of oracle. "
                              "Sweep this to test model accuracy requirements.")
     parser.add_argument("--input_counters", nargs='+', default=None,
-                        help="Must match the --input_counters used during training. "
-                             "Required when models were trained with a counter subset.")
+                        help="Optional. Restricts the PMU columns before feature building. Not "
+                             "needed for a counter-subset model: features are aligned to the "
+                             "model's own feature_names_ at predict time regardless.")
+    parser.add_argument("--feature_set", default='full',
+                        help="Model variant dir under <cpu>/<suite>/ (full, top4, top6). "
+                             "top4/top6 auto-align to the model's counter subset.")
     args = parser.parse_args()
     run_precompute(args.model_base_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
-                   args.core_type, args.suites, args.max_error_pct, args.input_counters)
+                   args.core_type, args.suites, args.max_error_pct, args.input_counters,
+                   feature_set=args.feature_set, arch=args.arch)
 
 if __name__ == "__main__":
     main()

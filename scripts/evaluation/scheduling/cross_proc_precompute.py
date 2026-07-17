@@ -192,7 +192,7 @@ _ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
 def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
-                   max_error_pct=None, input_counters=None):
+                   max_error_pct=None, input_counters=None, arch='x86'):
     if suites is None:
         suites = _ALL_SUITES
     if max_error_pct is not None:
@@ -226,7 +226,7 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
         if not l2b_dir.exists():
             print(f"[WARN] {little_type}->{big_type} model dir not found for suite '{suite}': {l2b_dir}")
             continue
-        suite_benches = find_workloads(p_to_e_dir, pmu_dir, suite)
+        suite_benches = find_workloads(b2l_dir, pmu_dir, suite)
         print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
         for b in suite_benches:
             bench_to_dirs[b] = (b2l_dir, l2b_dir)
@@ -240,11 +240,11 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
         bench_mapes = []
 
         bench_mapes += _process_direction(
-            bench, FREQS, 'P', 'E', p_to_e_dir, ('cpu0', 'cpu16'),
+            bench, FREQS, 'P', 'E', b2l_dir, ('cpu0', 'cpu16'),
             pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
 
         bench_mapes += _process_direction(
-            bench, FREQS, 'E', 'P', e_to_p_dir, ('cpu16', 'cpu0'),
+            bench, FREQS, 'E', 'P', l2b_dir, ('cpu16', 'cpu0'),
             pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
 
         if bench_mapes:

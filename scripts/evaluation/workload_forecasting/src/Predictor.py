@@ -8,8 +8,9 @@ from sklearn.svm import SVR, SVC, LinearSVR
 from sklearn.multioutput import MultiOutputRegressor
 from sklearn.tree import DecisionTreeRegressor
 
-# Set random seeds for reproducibility
-RANDOM_SEED = 42
+# Set random seeds for reproducibility. WF_SEED overrides the default (still 42)
+# so a single fit can be re-run under a different initialization.
+RANDOM_SEED = int(os.environ.get("WF_SEED", "42"))
 np.random.seed(RANDOM_SEED)
 
 # Set TensorFlow/Keras random seeds for reproducibility

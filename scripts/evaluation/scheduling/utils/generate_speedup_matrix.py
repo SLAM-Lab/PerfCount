@@ -1,11 +1,20 @@
 import argparse
 import os
 import re
+import sys
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
 import numpy as np
 import pandas as pd
 from pathlib import Path
+
+
+# Canonical ref_cycles scheduling-stall repair lives in the cross-platform
+# shared_features module so the sim trace generator, the translation training,
+# and the forecasting dataset builder all clean ref_cycles identically.
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                '..', '..', 'cross_platform_prediction'))
+from shared_features import repair_ref_cycles
 
 
 def process_group(wl, ph, group_df, configs, granular_dir):
@@ -65,6 +74,8 @@ def main():
                          help="Target architecture: 'x86' (P/E cores) or 'arm_edge' (L/B cores)")
     parser.add_argument('--workers', type=int, default=1,
                          help="number of (workload, phase) groups to process in parallel (default 1)")
+    parser.add_argument('--no_repair', action='store_true',
+                         help="disable ref_cycles scheduling-stall repair (for A/B comparison)")
     args = parser.parse_args()
 
     input_path = Path(args.input_dir)
@@ -84,6 +95,8 @@ def main():
     
     all_data = []
     files_processed = 0
+    total_repaired = 0
+    total_samples = 0
 
     print(f"Scanning directory: {input_path}")
     
@@ -104,14 +117,24 @@ def main():
         config_name = f"{core_type}_{freq_ghz}GHz"
 
         try:
+            cols0 = pd.read_csv(f, nrows=0).columns
             usecols = ['sample_index', 'ref_cycles']
-            has_power = 'power_watts_total_block' in pd.read_csv(f, nrows=0).columns
+            has_cpu = 'cpu_cycles' in cols0
+            if has_cpu:
+                usecols.append('cpu_cycles')
+            has_power = 'power_watts_total_block' in cols0
             if has_power:
                 usecols.append('power_watts_total_block')
             df = pd.read_csv(f, usecols=usecols)
 
+            ref = df['ref_cycles'].values.astype(float)
+            if has_cpu and not args.no_repair:
+                ref, n_rep = repair_ref_cycles(ref, df['cpu_cycles'].values)
+                total_repaired += n_rep
+                total_samples += len(ref)
+
             ref_divisor = 2e9 if args.arch == 'arm_edge' else 1e9
-            df['time_s'] = df['ref_cycles'] / ref_divisor
+            df['time_s'] = ref / ref_divisor
 
             df['workload'] = workload
             df['phase'] = phase
@@ -127,7 +150,12 @@ def main():
         print("No valid CSV files found.")
         return
         
-    print(f"Successfully loaded {files_processed} files. Condensing data...")
+    if args.no_repair:
+        print(f"Successfully loaded {files_processed} files (ref_cycles repair DISABLED). Condensing data...")
+    else:
+        pct = (100.0 * total_repaired / total_samples) if total_samples else 0.0
+        print(f"Successfully loaded {files_processed} files. "
+              f"Repaired {total_repaired}/{total_samples} ({pct:.3f}%) stall-inflated ref_cycles samples. Condensing data...")
 
     # 2. Master Pivot
     master_df = pd.concat(all_data, ignore_index=True)

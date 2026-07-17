@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import os
 import re
 import numpy as np
 from pathlib import Path
@@ -662,6 +663,8 @@ def process_workload(wl, ph, pairs, input_path, configs,
                                                  if apply_warmup else traces[m])
                     _record_diag(diag_results, wl, ph, m, name, st)
             elif getattr(fn, 'is_viterbi_oracle', False):
+                if os.environ.get('SKIP_VITERBI'):
+                    continue   # skip the expensive full-trace DP oracles for a fast ladder
                 # Full-trace DP: the expensive path. Cache the ACTION PATH rather than
                 # the trace, so the cache is reusable when --apply_warmup is on (the DP
                 # is warmup-unaware by design, so the path is identical either way and
@@ -720,7 +723,8 @@ def process_workload(wl, ph, pairs, input_path, configs,
     for key in ('EAS_Hetero', 'EAS_With_DVFS', 'Threshold_Migration', 'Thread_Director',
                 'UCB1_Hetero', 'Proactive_Hetero_Oracle'):
         for m in METRICS:
-            combined_traces[m][key] = hetero_traces[m][key]
+            if key in hetero_traces[m]:
+                combined_traces[m][key] = hetero_traces[m][key]
 
     # Aggregate Results
     for m_type in METRICS:

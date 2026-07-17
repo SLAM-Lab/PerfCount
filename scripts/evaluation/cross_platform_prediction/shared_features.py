@@ -270,6 +270,55 @@ def merge_by_cumulative_instructions(df_src, df_tgt,
     return merged
 
 
+def repair_ref_cycles(ref_cycles, cpu_cycles, k=5.0):
+    """Repair OS-scheduling / counter stall artifacts in ref_cycles.
+
+    A small fraction of fixed-instruction samples record a wall-clock stall
+    between perf samples that inflates the reference-cycle count 20-90x. Two
+    variants appear: (1) off-core preemption inflates ref_cycles while cpu_cycles
+    stays on-core-normal (the ref/cpu ratio spikes); (2) an on-core stall inflates
+    ref_cycles and cpu_cycles together, so the ratio is preserved but both
+    magnitudes and CPI blow up. These are measurement artifacts, not workload
+    behaviour: the affected samples carry no page/major faults, normal TLB, only
+    ~3x cache misses (far too few to explain a 20x cycle inflation), and they land
+    at non-reproducible program points across runs. Because every sample spans a
+    fixed instruction budget, a clean phase has a tight ref_cycles distribution, so
+    detect either variant by magnitude (ref_cycles > k x the robust median) and
+    rebuild it: from cpu_cycles x baseline ratio when cpu_cycles is itself clean
+    (off-core case), otherwise from the median ref_cycles (on-core case, where
+    cpu_cycles is untrustworthy too).
+
+    Returns (repaired_ref_cycles, n_repaired).
+    """
+    ref = np.asarray(ref_cycles, dtype=float).copy()
+    cpu = np.asarray(cpu_cycles, dtype=float)
+    med_ref = np.median(ref)
+    if not np.isfinite(med_ref) or med_ref <= 0:
+        return ref, 0
+    valid = cpu > 0
+    baseline = np.median(ref[valid] / cpu[valid]) if valid.any() else np.nan
+    med_cpu = np.median(cpu[valid]) if valid.any() else np.nan
+    stalled = ref > k * med_ref
+    cpu_ok = valid & (cpu <= k * med_cpu)
+    off_core = stalled & cpu_ok
+    on_core = stalled & ~cpu_ok
+    if np.isfinite(baseline) and baseline > 0:
+        ref[off_core] = cpu[off_core] * baseline
+    else:
+        ref[off_core] = med_ref
+    ref[on_core] = med_ref
+    return ref, int(stalled.sum())
+
+
+def repair_ref_cycles_df(df, k=5.0):
+    """Repair df['ref_cycles'] in place using df['cpu_cycles'] (see
+    repair_ref_cycles). No-op when either column is absent. Returns df."""
+    if 'ref_cycles' in df.columns and 'cpu_cycles' in df.columns and len(df):
+        repaired, _ = repair_ref_cycles(df['ref_cycles'].values, df['cpu_cycles'].values, k=k)
+        df['ref_cycles'] = repaired
+    return df
+
+
 def prepare_bench_df(df_src, df_tgt, target_key="cpu_cycles",
                      min_instructions=100_000):
     """
@@ -278,6 +327,11 @@ def prepare_bench_df(df_src, df_tgt, target_key="cpu_cycles",
 
     Returns a merged DataFrame or None if the result is unusable.
     """
+    # Repair ref_cycles scheduling-stall artifacts per config before aligning,
+    # so the training target (ref_cycles ratio) is not learned from stall noise.
+    repair_ref_cycles_df(df_src)
+    repair_ref_cycles_df(df_tgt)
+
     # Filter before merging
     for df, col in [(df_src, "instructions"), (df_tgt, "instructions")]:
         if col in df.columns:
