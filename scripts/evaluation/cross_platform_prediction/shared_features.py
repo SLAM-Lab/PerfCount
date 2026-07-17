@@ -35,8 +35,8 @@ def add_feature_args(parser):
     g = parser.add_argument_group("Feature toggles")
 
     g.add_argument("--input_counters", nargs="+", default=None,
-                   help="Restrict raw hardware counters used as features to this list "
-                        "(plus instructions/cpu_cycles/ref_cycles, always kept). "
+                   help="Restrict raw hardware counters used as features to exactly "
+                        "this list (no counters are force-kept). "
                         "Default: use all available counters.")
 
     g.add_argument("--jobs", type=int, default=8,
@@ -49,6 +49,18 @@ def add_feature_args(parser):
                    help="Weight training samples so every workload contributes equally "
                         "regardless of trace length (1/len per sample). "
                         "Prevents long workloads from dominating the fit.")
+
+    g.add_argument("--mode", default="loocv",
+                   choices=["loocv", "general_insample", "general_temporal"],
+                   help="loocv (default): each workload predicted by a model trained on "
+                        "the others (generalization to unseen workloads). "
+                        "general_insample: one model trained on ALL workloads, evaluated on "
+                        "each (learnability ceiling). general_temporal: one model trained on "
+                        "the first --temporal_frac of every workload, tested on the held-out "
+                        "tail (deployable shared model).")
+    g.add_argument("--temporal_frac", type=float, default=0.8,
+                   help="general_temporal only: fraction of each workload's trace used for "
+                        "training; the remaining tail is the test split (default 0.8).")
 
     g.add_argument("--exclude_unstable_dacapo", action="store_true", default=False,
                    help="Drop DaCapo workloads with high cross-configuration variance "
@@ -162,7 +174,7 @@ def build_model(cat_features=None):
 # 3.  FEATURE ENGINEERING
 # =============================================================================
 
-ALWAYS_KEEP_COUNTERS = ["instructions", "cpu_cycles", "ref_cycles"]
+ALWAYS_KEEP_COUNTERS = []  # no forced baselines: a top-K model uses exactly K counters
 
 
 def restrict_input_counters(df, suffix, input_counters):
@@ -190,8 +202,15 @@ def build_features(df, suffix, args):
     -------
     X      : pd.DataFrame  — feature matrix (never contains NaN/Inf)
     """
+    non_feature = {"sample_index", "target_y", "source_val"}
+
+    def _base(c):
+        # strip the _src/_tgt suffix so the exclusion matches suffixed columns
+        # (e.g. 'sample_index_src') and sample_index never leaks as a feature.
+        return c[:-len(suffix)] if suffix and c.endswith(suffix) else c
+
     counter_cols = [c for c in df.columns if c.endswith(suffix)] if suffix else list(df.columns)
-    counter_cols = [c for c in counter_cols if c not in ("sample_index", "target_y", "source_val")]
+    counter_cols = [c for c in counter_cols if _base(c) not in non_feature]
 
     if not counter_cols:
         return pd.DataFrame(index=df.index)
@@ -466,6 +485,133 @@ def run_loocv(bench_dfs, process_fold_fn, args, extra_kwargs=None):
                     results.append(r)
             except Exception as e:
                 print(f"  [WARN] Sequential fold '{b}' failed: {e}")
+    return results
+
+
+# =============================================================================
+# 7b. GENERAL-MODEL RUNNER
+#     One model trained on all workloads; the complement to LOOCV. Two modes:
+#       general_insample  -- train on all, evaluate on each (learnability ceiling)
+#       general_temporal  -- train on the first --temporal_frac of every workload,
+#                            test on the held-out tail (deployable shared model)
+#     Evaluated per-workload and returned in the SAME result-dict shape as
+#     run_loocv, so print_summary / save_feature_importance / grand_summary all
+#     work unchanged and the numbers sit apples-to-apples next to the LOOCV row.
+# =============================================================================
+
+def _target_ratio_log(df):
+    """log(clip(target_y / source_val, 0.2, 5.0)) -- identical to process_fold."""
+    src_clean = df["source_val"].replace(0, np.nan).fillna(1e-9)
+    ratio = df["target_y"] / src_clean
+    return np.log(np.clip(ratio, 0.2, 5.0))
+
+
+def run_general_model(bench_dfs, args, freq_ratio, out_dir, mode):
+    """Train a single general model and evaluate it per-workload.
+
+    Returns a list of per-workload result dicts (same schema as run_loocv);
+    feature importances are attached to the first row only (they come from the
+    one shared model, so averaging in save_feature_importance is a no-op)."""
+    strict = getattr(args, "strict_loocv", True)
+    frac = getattr(args, "temporal_frac", 0.8)
+    input_counters = getattr(args, "input_counters", None)
+
+    def base(b):
+        return b.split("_phase")[0] if strict else b
+
+    # Build the pooled training set and the per-workload evaluation groups.
+    train_parts = []
+    eval_groups = {}  # base workload name -> list of test-split DataFrames
+    for b, df in bench_dfs.items():
+        if mode == "general_temporal":
+            n = int(len(df) * frac)
+            if n < 1 or (len(df) - n) < 1:
+                continue  # too short to split
+            train_parts.append(df.iloc[:n])
+            eval_groups.setdefault(base(b), []).append(df.iloc[n:])
+        else:  # general_insample
+            train_parts.append(df)
+            eval_groups.setdefault(base(b), []).append(df)
+
+    if not train_parts or not eval_groups:
+        print(f"  [general:{mode}] nothing to train/evaluate after splitting.")
+        return []
+
+    train_full = pd.concat(train_parts, ignore_index=True)
+
+    if getattr(args, "equal_weight", False):
+        sample_weights = np.concatenate(
+            [np.full(len(p), 1.0 / len(p)) for p in train_parts]
+        )
+    else:
+        sample_weights = None
+
+    train_full = restrict_input_counters(train_full, "_src", input_counters)
+    X_train = build_features(train_full, suffix="_src", args=args)
+    if X_train.empty:
+        return []
+    y_train_log = _target_ratio_log(train_full)
+
+    # Pooled test used only as the early-stopping eval set (mirrors process_fold,
+    # which also early-stops on its evaluation data -- keeps methodology identical
+    # to LOOCV). For general_insample this is the training data itself.
+    test_pooled = pd.concat(
+        [d for lst in eval_groups.values() for d in lst], ignore_index=True)
+    test_pooled = restrict_input_counters(test_pooled, "_src", input_counters)
+    X_test_pooled = build_features(test_pooled, suffix="_src", args=args)
+
+    common_cols = sorted(set(X_train.columns) & set(X_test_pooled.columns))
+    if not common_cols:
+        return []
+    X_train = X_train[common_cols]
+    X_test_pooled = X_test_pooled[common_cols]
+    y_test_pooled_log = _target_ratio_log(test_pooled)
+
+    print(f"  [general:{mode}] training 1 model on {len(X_train)} rows from "
+          f"{len(train_parts)} workload-splits; evaluating {len(eval_groups)} workloads.")
+
+    model = build_model(cat_feature_names(args))
+    model.fit(
+        X_train, y_train_log,
+        eval_set=(X_test_pooled, y_test_pooled_log),
+        early_stopping_rounds=200,
+        sample_weight=sample_weights,
+    )
+    importances = dict(zip(X_train.columns.tolist(), model.get_feature_importance()))
+
+    os.makedirs(out_dir, exist_ok=True)
+    model.save_model(os.path.join(out_dir, f"model_general_{mode}.cbm"))
+
+    results = []
+    for i, (name, dfs) in enumerate(sorted(eval_groups.items())):
+        tdf = restrict_input_counters(pd.concat(dfs, ignore_index=True), "_src", input_counters)
+        X_t = build_features(tdf, suffix="_src", args=args)
+        if X_t.empty:
+            continue
+        X_t = X_t.reindex(columns=common_cols, fill_value=0)
+
+        src_cycles = tdf["source_val"].values
+        y_true_cycles = tdf["target_y"].values
+        pred_cycles = np.exp(model.predict(X_t)) * src_cycles
+
+        m_ml    = compute_metrics(y_true_cycles, pred_cycles)
+        m_copy  = compute_metrics(y_true_cycles, src_cycles)
+        m_scale = compute_metrics(y_true_cycles, src_cycles / freq_ratio)
+
+        row = {
+            "bench":       name,
+            "wmape":       m_ml["wmape"],
+            "mape":        m_ml["mape"],
+            "mdape":       m_ml["mdape"],
+            "wmape_copy":  m_copy["wmape"],
+            "mape_copy":   m_copy["mape"],
+            "wmape_scale": m_scale["wmape"],
+            "mape_scale":  m_scale["mape"],
+        }
+        if i == 0:
+            row["feature_importances"] = importances
+        results.append(row)
+
     return results
 
 

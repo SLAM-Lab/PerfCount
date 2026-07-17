@@ -41,8 +41,12 @@ CPU_LABEL = {
     "cpu16": "E-Core",
 }
 
-# Counters excluded from ranking: always-included baselines + non-counter artifacts
-EXCLUDE = {"instructions", "cpu_cycles", "ref_cycles", "sample_index"}
+# No forced baselines (shared_features.ALWAYS_KEEP_COUNTERS == []). Every real
+# counter -- including instructions/cpu_cycles/ref_cycles -- competes in the
+# ranking; --top_k returns exactly top_k counters. Only sample_index (a
+# non-counter artifact) is excluded from ranking.
+BASELINE_COUNTERS = []
+EXCLUDE = {"sample_index"}
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +54,9 @@ EXCLUDE = {"instructions", "cpu_cycles", "ref_cycles", "sample_index"}
 # ---------------------------------------------------------------------------
 
 def get_top_counters(results_dir, top_k):
+    """Return the top ranked counters to pass as --input_counters so the trained
+    model ends up with EXACTLY top_k counters. With no forced baselines
+    (BASELINE_COUNTERS == []) this is simply the top_k most important counters."""
     imp_files = []
     for root, _dirs, files in os.walk(results_dir):
         for f in files:
@@ -59,11 +66,13 @@ def get_top_counters(results_dir, top_k):
     if not imp_files:
         return []
 
+    n_extra = max(0, top_k - len(BASELINE_COUNTERS))
+
     dfs = [pd.read_csv(f) for f in imp_files]
     combined = pd.concat(dfs, ignore_index=True)
     avg = combined.groupby("feature")["importance"].mean().sort_values(ascending=False)
     avg = avg[~avg.index.isin(EXCLUDE)]
-    return list(avg.head(top_k).index)
+    return list(avg.head(n_extra).index)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +190,8 @@ def main():
     p.add_argument("--results_dir",
                    help="(legacy) Path to the 'full' directory with feature_importance.csv files.")
     p.add_argument("--top_k",        type=int,
-                   help="(legacy) Number of top counters to return.")
+                   help="(legacy) TOTAL feature budget (baselines + ranked counters). "
+                        "Returns top_k - len(baselines) ranked counters.")
     # Summary mode args
     p.add_argument("--gran",         default="10M")
     p.add_argument("--results_root", default="results/cross_platform")

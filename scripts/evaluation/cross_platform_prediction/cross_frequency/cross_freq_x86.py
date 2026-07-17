@@ -33,6 +33,7 @@ from shared_features import (
     load_fold_if_done,
     try_load_model,
     run_loocv,
+    run_general_model,
     print_summary,
     save_feature_importance,
     filter_excluded_benchmarks,
@@ -252,12 +253,15 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
         print(f"  Skipping {src_freq}->{tgt_freq}: only {len(bench_dfs)} valid pairs after filtering.")
         return None
 
-    results = run_loocv(
-        bench_dfs,
-        process_fold,
-        args,
-        extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
-    )
+    if getattr(args, "mode", "loocv") == "loocv":
+        results = run_loocv(
+            bench_dfs,
+            process_fold,
+            args,
+            extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
+        )
+    else:
+        results = run_general_model(bench_dfs, args, freq_ratio, direction_dir, args.mode)
 
     if not results:
         return None
