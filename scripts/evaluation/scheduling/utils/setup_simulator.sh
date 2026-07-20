@@ -61,7 +61,7 @@ PY="$REPO_ROOT/.venv/bin/python3"
 RES="$REPO_ROOT/results/scheduling"
 PF="$REPO_ROOT/scripts/evaluation/workload_forecasting/phase_forecasting"
 
-TRACES="${TRACES:-$RES/speedup_full_v2/granular_phase_traces}"
+TRACES="${TRACES:-$RES/Hetero_precompute/speedup_full_v2_repaired/granular_phase_traces}"
 PMU="${PMU:-$REPO_ROOT/processed_data_10M/x86_desktop_heterogeneous}"
 CF_MODELS="${CF_MODELS:-$REPO_ROOT/results/cross_platform/cross_freq/x86_10M}"
 CP_MODELS="${CP_MODELS:-$REPO_ROOT/results/cross_platform/cross_proc/x86_10M}"
@@ -77,6 +77,10 @@ XPROC="${XPROC:-0}"
 PAR="${PAR:-24}"
 CAPS="${CAPS:-5 10 20}"
 MODEL="${MODEL:-dt}"
+# Cross-frequency model variant used by the translate stage. The deployable study
+# uses the leak-free top-4 counter models, so default to top4. Set FEATURE_SET=full
+# to reproduce the earlier (sample_index-leaked) full-feature models.
+FEATURE_SET="${FEATURE_SET:-top4}"
 CORES="0 16"; FREQS="1.0 2.0 3.0 4.0"
 
 forced(){ [ "$FORCE" = all ] && return 0; for f in $FORCE; do [ "$f" = "$1" ] && return 0; done; return 1; }
@@ -190,10 +194,12 @@ dump_fo(){ # $1=out $2=method $3=gate
     BENCHES="$BENCHES" CORES="$CORES" FREQS="$FREQS" bash "$PF/run_dump_forecast_oracle.sh"; }
 cf_pre(){ # $1=core
   "$PY" "$SCHED_DIR/cross_freq_precompute.py" --model_base_dir "$CF_MODELS" --pmu_dir "$PMU" \
-    --oracle_dir "$TRACES" --out_dir "$RES/cross_freq_translate_10M" --core_type "$1" --suites $SUITES; }
+    --oracle_dir "$TRACES" --out_dir "$RES/DVFS_precompute/cross_freq_translate_10M" --core_type "$1" \
+    --feature_set "$FEATURE_SET" --suites $SUITES; }
 cp_pre(){
   "$PY" "$SCHED_DIR/cross_proc_precompute.py" --model_dir "$CP_MODELS" --pmu_dir "$PMU" \
-    --oracle_dir "$TRACES" --out_dir "$RES/cross_proc_translate_10M" --suites $SUITES; }
+    --oracle_dir "$TRACES" --out_dir "$RES/Hetero_precompute/cross_proc_translate_10M" \
+    --feature_set "$FEATURE_SET" --suites $SUITES; }
 cap(){ # $1=pred_dir $2=out_base
   "$PY" "$SCRIPT_DIR/cap_predictions.py" --pred_dir "$1" --granular "$TRACES" \
     --out_base "$2" --caps $CAPS --workers "$PAR"; }
@@ -205,32 +211,32 @@ if staged translate; then
   echo "--- translate (same-chunk model translation -> reactive policies)"
   # Both cores write into one dir (disjoint speedups_from_{P,E}_* subtrees), so the
   # completeness check only holds after both have run. Force P whenever E is being built.
-  if ! check_dir "$RES/cross_freq_translate_10M" cf || forced translate; then
+  if ! check_dir "$RES/DVFS_precompute/cross_freq_translate_10M" cf || forced translate; then
     if [ "$DRY" = 1 ]; then
       echo "  cross_freq_translate_10M: building"
       for c in P E; do echo "      cross_freq_precompute.py --core_type $c --suites $SUITES"; done
     else
-      forced translate && rm -rf "$RES/cross_freq_translate_10M"
+      forced translate && rm -rf "$RES/DVFS_precompute/cross_freq_translate_10M"
       for c in P E; do
         echo "  cross_freq_translate_10M: core $c"
         cf_pre "$c" > "$LOGDIR/cross_freq_translate_10M.$c.log" 2>&1 || { echo "      FAILED (core $c)"; tail -20 "$LOGDIR/cross_freq_translate_10M.$c.log"; rc=1; }
       done
-      report "$RES/cross_freq_translate_10M" cf || rc=1
+      report "$RES/DVFS_precompute/cross_freq_translate_10M" cf || rc=1
     fi
   else
     printf '  %-34s complete, skipping\n' cross_freq_translate_10M
   fi
-  [ "$XPROC" = 1 ] && { build "$RES/cross_proc_translate_10M" cp translate cp_pre || rc=1; }
+  [ "$XPROC" = 1 ] && { build "$RES/Hetero_precompute/cross_proc_translate_10M" cp translate cp_pre || rc=1; }
   echo
 fi
 
 if staged forecast; then
   echo "--- forecast (walk-forward causal forecast -> forecasting policies)"
-  build "$RES/forecast_predictions_10M" cf forecast dump_cf "$RES/forecast_predictions_10M" per_phase none 0 || rc=1
+  build "$RES/DVFS_precompute/forecast_predictions_10M" cf forecast dump_cf "$RES/DVFS_precompute/forecast_predictions_10M" per_phase none 0 || rc=1
   build "$RES/forecast_unaware_10M"     cf forecast dump_cf "$RES/forecast_unaware_10M"     global   none 0 || rc=1
   if [ "$XPROC" = 1 ]; then
-    build "$RES/cross_proc_forecast_10M"         cp forecast dump_cf "$RES/cross_proc_forecast_10M"         per_phase none 1 || rc=1
-    build "$RES/cross_proc_forecast_unaware_10M" cp forecast dump_cf "$RES/cross_proc_forecast_unaware_10M" global    none 1 || rc=1
+    build "$RES/Hetero_precompute/cross_proc_forecast_10M"         cp forecast dump_cf "$RES/Hetero_precompute/cross_proc_forecast_10M"         per_phase none 1 || rc=1
+    build "$RES/Hetero_precompute/cross_proc_forecast_unaware_10M" cp forecast dump_cf "$RES/Hetero_precompute/cross_proc_forecast_unaware_10M" global    none 1 || rc=1
   fi
   echo
 fi
@@ -252,7 +258,7 @@ if staged gated; then
   # should bound it back. Blocked on the cross-proc retrain -- building it against the current
   # model reproduces the 1GHz-at-2GHz defect -- so it is XPROC-gated like the rest of that arm.
   if [ "$XPROC" = 1 ]; then
-    build "$RES/cross_proc_forecast_gated_10M" cp gated dump_cf "$RES/cross_proc_forecast_gated_10M" per_phase persist 1 || rc=1
+    build "$RES/Hetero_precompute/cross_proc_forecast_gated_10M" cp gated dump_cf "$RES/Hetero_precompute/cross_proc_forecast_gated_10M" per_phase persist 1 || rc=1
   fi
   echo
 fi
@@ -284,21 +290,21 @@ fi
 # ---------------------------------------------------------------- final audit
 echo "=== coverage (every dir checked stem-by-stem against the $NPH trace bench-phases)"
 ok=0
-report "$RES/cross_freq_translate_10M"    cf || ok=1
-report "$RES/forecast_predictions_10M"    cf || ok=1
+report "$RES/DVFS_precompute/cross_freq_translate_10M"    cf || ok=1
+report "$RES/DVFS_precompute/forecast_predictions_10M"    cf || ok=1
 report "$RES/forecast_unaware_10M"        cf || ok=1
 report "$RES/forecast_oracle_10M"         fo || ok=1
 report "$RES/forecast_oracle_unaware_10M" fo || ok=1
 [ -d "$RES/forecast_gated_10M" ]        && { report "$RES/forecast_gated_10M"        cf || ok=1; }
 [ -d "$RES/forecast_oracle_gated_10M" ] && { report "$RES/forecast_oracle_gated_10M" fo || ok=1; }
 for n in $CAPS; do
-  [ -d "$RES/capped/cf_tr_cap$n" ] && { report "$RES/capped/cf_tr_cap$n" cf || ok=1; }
-  [ -d "$RES/capped/cf_fc_cap$n" ] && { report "$RES/capped/cf_fc_cap$n" cf || ok=1; }
+  [ -d "$RES/DVFS_precompute/capped/cf_tr_cap$n" ] && { report "$RES/DVFS_precompute/capped/cf_tr_cap$n" cf || ok=1; }
+  [ -d "$RES/DVFS_precompute/capped/cf_fc_cap$n" ] && { report "$RES/DVFS_precompute/capped/cf_fc_cap$n" cf || ok=1; }
 done
 if [ "$XPROC" = 1 ]; then
-  report "$RES/cross_proc_translate_10M" cp || ok=1
-  report "$RES/cross_proc_forecast_10M"  cp || ok=1
-  [ -d "$RES/cross_proc_forecast_gated_10M" ] && { report "$RES/cross_proc_forecast_gated_10M" cp || ok=1; }
+  report "$RES/Hetero_precompute/cross_proc_translate_10M" cp || ok=1
+  report "$RES/Hetero_precompute/cross_proc_forecast_10M"  cp || ok=1
+  [ -d "$RES/Hetero_precompute/cross_proc_forecast_gated_10M" ] && { report "$RES/Hetero_precompute/cross_proc_forecast_gated_10M" cp || ok=1; }
 fi
 
 echo

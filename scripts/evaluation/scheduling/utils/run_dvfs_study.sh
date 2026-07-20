@@ -22,12 +22,13 @@ REPO_ROOT="$(cd "$SCHED_DIR/../../.." && pwd)"
 PY="$REPO_ROOT/.venv/bin/python3"
 RES="$REPO_ROOT/results/scheduling"
 
-TRACES="${TRACES:-$RES/speedup_full_v2/granular_phase_traces}"
+TRACES="${TRACES:-$RES/Hetero_precompute/speedup_full_v2_repaired/granular_phase_traces}"
 OUT_ROOT="${OUT_ROOT:-$RES/DVFS_Study}"
 VITERBI="${VITERBI:-$RES/viterbi_cache_v2_persample}"
 ACC="${ACC:-raw}"
 DRY="${DRY:-0}"
 POWER_MODE="${POWER_MODE:-per_sample}"
+DECISION_POWER_MODE="${DECISION_POWER_MODE:-oracle}"
 BENCH_LIMIT="${BENCH_LIMIT:-0}"
 # Workloads with incomplete cross-frequency prediction sets. Excluded so the rest of the
 # run keeps --strict_predictions on. Without this the loader would silently substitute
@@ -75,10 +76,10 @@ pred_dirs() {  # cross-frequency translate + forecast only. No cross-proc.
     # forecast_oracle is a bound (forecast with perfect translation), not a model, so it
     # is fed only to the raw run: an error cap is defined against the cross-platform
     # model, and this policy has no cross-platform model to cap.
-    echo "--cross_freq_p_pred_dir $RES/cross_freq_translate_10M \
-          --cross_freq_e_pred_dir $RES/cross_freq_translate_10M \
-          --cross_freq_p_forecast_dir $RES/forecast_predictions_10M \
-          --cross_freq_e_forecast_dir $RES/forecast_predictions_10M \
+    echo "--cross_freq_p_pred_dir $RES/DVFS_precompute/cross_freq_translate_10M \
+          --cross_freq_e_pred_dir $RES/DVFS_precompute/cross_freq_translate_10M \
+          --cross_freq_p_forecast_dir $RES/DVFS_precompute/forecast_predictions_10M \
+          --cross_freq_e_forecast_dir $RES/DVFS_precompute/forecast_predictions_10M \
           ${FC_ORACLE_DIR:+--forecast_oracle_dir $FC_ORACLE_DIR} \
           ${FC_UNAWARE_DIR:+--cross_freq_p_forecast_unaware_dir $FC_UNAWARE_DIR} \
           ${FC_UNAWARE_DIR:+--cross_freq_e_forecast_unaware_dir $FC_UNAWARE_DIR} \
@@ -88,10 +89,10 @@ pred_dirs() {  # cross-frequency translate + forecast only. No cross-proc.
           ${FC_ORACLE_GATED_DIR:+--forecast_oracle_gated_dir $FC_ORACLE_GATED_DIR}"
   else
     local n=${a#cap}
-    echo "--cross_freq_p_pred_dir $RES/capped/cf_tr_cap$n \
-          --cross_freq_e_pred_dir $RES/capped/cf_tr_cap$n \
-          --cross_freq_p_forecast_dir $RES/capped/cf_fc_cap$n \
-          --cross_freq_e_forecast_dir $RES/capped/cf_fc_cap$n"
+    echo "--cross_freq_p_pred_dir $RES/DVFS_precompute/capped/cf_tr_cap$n \
+          --cross_freq_e_pred_dir $RES/DVFS_precompute/capped/cf_tr_cap$n \
+          --cross_freq_p_forecast_dir $RES/DVFS_precompute/capped/cf_fc_cap$n \
+          --cross_freq_e_forecast_dir $RES/DVFS_precompute/capped/cf_fc_cap$n"
   fi
 }
 
@@ -125,7 +126,7 @@ for a in $ACC; do
   out="$OUT_ROOT/dvfs_$a"; log="$OUT_ROOT/dvfs_$a.log"
   cmd="$PY $SCHED_DIR/src/main.py \
     --input_dir $TRACES --output_dir $out \
-    --power_mode $POWER_MODE --apply_warmup --strict_predictions \
+    --power_mode $POWER_MODE --decision_power_mode $DECISION_POWER_MODE --apply_warmup --strict_predictions \
     --viterbi_cache_dir $VITERBI $LIMIT_ARG $EXCL_ARG $(pred_dirs "$a")"
   if [ "$DRY" = 1 ]; then echo "[$a] $cmd" | tr -s ' '; continue; fi
   mkdir -p "$out"   # after the DRY check, so a dry run leaves no empty dirs behind

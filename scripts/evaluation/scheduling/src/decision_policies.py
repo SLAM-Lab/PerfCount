@@ -14,6 +14,53 @@ def _exp(metric):
     return 2 if metric == 'ED2P' else 1
 
 
+# Power used by MODEL policies (reactive/forecast/gate) when *deciding* which config
+# to pick. Default None keeps the historical behavior: the decision multiplies predicted
+# time by the true per-chunk measured power (oracle_power). That is not deployable — at
+# runtime the scheduler only ever runs on one config and cannot observe another config's
+# live power. Set DECISION_POWER_LOOKUP to a callable(config_name)->watts (e.g.
+# data_loader.get_power_w, a one-time characterized per-config table) to make model
+# decisions use a static per-config power estimate instead. The realized/reported cost of
+# whatever config is chosen still uses the true per-chunk power (energy_mat), so the model
+# decides with an estimate and pays the true cost. The oracle is unaffected and keeps
+# per-chunk power, so it remains a valid bound.
+DECISION_POWER_LOOKUP = None
+
+
+def _decision_power(oracle_power, local_names):
+    """Per-chunk power tensor to use for MODEL DECISIONS.
+
+    oracle_power: (n_chunks, n_act) true per-chunk power. Returned unchanged when no
+    static lookup is configured. When DECISION_POWER_LOOKUP is set, returns a static
+    per-config power broadcast across chunks (deployable characterized estimate).
+    """
+    if DECISION_POWER_LOOKUP is None:
+        return oracle_power
+    pv = np.array([DECISION_POWER_LOOKUP(n) for n in local_names], dtype=float)
+    return np.broadcast_to(pv[None, :], oracle_power.shape)
+
+
+# Extra transition latency, in the same time units as the traces, added to the migration
+# cost ONLY when a MODEL policy decides which config to pick. Default None leaves decisions
+# unchanged. When set to a full (n_config, n_config) matrix, the decision argmin sees an
+# inflated migration cost so it is appropriately reluctant to migrate, while the realized and
+# reported cost (accumulate_trace) still uses the true transition latency. This models the
+# cache-warmup delay a P<->E migration actually incurs, which the base transition cost omits
+# and which the simulator otherwise charges only post-hoc in scoring, leaving the greedy
+# decision to over-migrate. Under ED2P the (T + lat)^2 term squares this deterrent, so a
+# single warmup-latency matrix makes the decision migration-shy under ED2P and only mildly so
+# under EDP, i.e. it is automatically metric-scaled. The oracle and heuristics are unaffected.
+DECISION_LAT_EXTRA = None
+
+
+def _decision_lat(sub_lat, idx_list):
+    """Transition latency used for a MODEL DECISION. True sub_lat unless a warmup-aware
+    decision latency is configured, in which case the migration deterrent is added."""
+    if DECISION_LAT_EXTRA is None:
+        return sub_lat
+    return sub_lat + DECISION_LAT_EXTRA[np.ix_(idx_list, idx_list)]
+
+
 def decide_greedy(window_t, window_e, sub_lat, sub_nrg, prev_idx, metric):
     """Single-chunk window, transition-aware argmin.
 
@@ -128,6 +175,101 @@ def accumulate_trace(time_mat_sub, energy_mat_sub, sub_lat, sub_nrg, actions, me
     step_t = time_mat_sub[rows, acts] + lats
     step_e = energy_mat_sub[rows, acts] + nrgs
     return np.cumsum(step_e * (step_t ** p))
+
+
+def reactive_fallback_gate_trace(time_mat, energy_mat, configs, valid_configs,
+                                 trans_lat, trans_nrg, fc_mat, rc_mat,
+                                 idx_list_fn, src_fn, gate_window, metric,
+                                 _return_actions=False, gate_stat='sum', gate_margin=0.0):
+    """Reactive-fallback outcome gate.
+
+    Runs the forecast policy (row i of fc_mat, the causal forecast tensor) and the reactive
+    policy (row i-1 of rc_mat, the translate tensor) in lockstep, and at each chunk uses the
+    forecast's choice only when the forecast has produced lower realized cost than the
+    reactive choice over a trailing window of gate_window chunks. It defaults to the reactive
+    choice otherwise, capturing forecast wins where behavior is changing. Causal, since the
+    gate at chunk i uses realized costs only from chunks before i.
+
+    gate_stat selects how the trailing window is summarized into the switch decision:
+      'sum'     — compare the sum of per-chunk realized costs (original). Under ED2P the cost
+                  is E*T^2, which is heavy-tailed, so a single high-delay chunk dominates the
+                  window and the trigger lags / mis-switches.
+      'logsum'  — compare the sum of log costs, i.e. the geometric mean. Additive and
+                  windowable like 'sum' but not dominated by one outlier chunk.
+      'winrate' — compare how often forecast's choice beat reactive's over the window
+                  (magnitude-free vote), switching only when forecast wins the majority.
+    gate_margin requires forecast to beat reactive by a relative margin before switching
+    (hysteresis): switch only when the forecast statistic is below (1 - gate_margin) times the
+    reactive statistic (or, for 'winrate', when the win fraction exceeds 0.5 + gate_margin).
+    """
+    n_chunks = len(time_mat)
+    idx_list = idx_list_fn(configs, valid_configs)
+    if not idx_list:
+        return (np.zeros(n_chunks), np.zeros(n_chunks, dtype=int), []) if _return_actions else np.zeros(n_chunks)
+    sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
+    sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
+    local_names = [configs[ci] for ci in idx_list]
+    oracle_sub_t = time_mat[:, idx_list]
+    oracle_sub_e = energy_mat[:, idx_list]
+    oracle_power = np.where(oracle_sub_t > 1e-12, oracle_sub_e / oracle_sub_t, 1.0)
+    p_exp = _exp(metric)
+    n_act = len(idx_list)
+    src_map = [src_fn(configs, idx_list, a) for a in range(n_act)]
+
+    decision_power = _decision_power(oracle_power, local_names)
+    dec_lat = _decision_lat(sub_lat, idx_list)
+
+    def _best(mat):
+        sub_t = mat[:, :n_chunks, :][:, :, idx_list]
+        sub_e = sub_t * decision_power[np.newaxis, :, :]
+        best = np.empty((n_act, n_chunks), dtype=np.int32)
+        for a in range(n_act):
+            sa = src_map[a]
+            tt = sub_t[sa] + dec_lat[a][None, :]
+            te = sub_e[sa] + sub_nrg[a][None, :]
+            best[a] = np.argmin(te * (tt ** p_exp), axis=1)
+        return best
+
+    best_fc = _best(fc_mat)
+    best_rc = _best(rc_mat)
+    realized = oracle_sub_e * (oracle_sub_t ** p_exp)   # true per-chunk cost of each config
+    # Per-chunk cost fed to the window statistic. 'logsum' works on log-cost so one
+    # heavy-tailed chunk cannot dominate the window; 'winrate' needs only the raw costs.
+    log_realized = np.log(np.maximum(realized, 1e-30)) if gate_stat == 'logsum' else None
+
+    start_idx = n_act - 1
+    actions = np.zeros(n_chunks, dtype=int)
+    actions[0] = start_idx
+    prev = start_idx
+    fc_hist = []; rc_hist = []; fc_cum = 0.0; rc_cum = 0.0   # sum / logsum accumulators
+    win_hist = []; win_cum = 0                                # winrate accumulator
+    for i in range(1, n_chunks):
+        fc = int(best_fc[prev, i])
+        rc = int(best_rc[prev, i - 1])
+        if not fc_hist:
+            use_fc = False
+        elif gate_stat == 'winrate':
+            use_fc = win_cum > (0.5 + gate_margin) * len(win_hist)
+        else:  # 'sum' or 'logsum': compare accumulated cost with a switch margin
+            use_fc = fc_cum < (1.0 - gate_margin) * rc_cum
+        chosen = fc if use_fc else rc
+        actions[i] = chosen
+        prev = chosen
+        # Record this chunk's counterfactual outcome for both choices into the window.
+        if gate_stat == 'logsum':
+            fc_v, rc_v = log_realized[i, fc], log_realized[i, rc]
+        else:
+            fc_v, rc_v = realized[i, fc], realized[i, rc]
+        fc_hist.append(fc_v); rc_hist.append(rc_v)
+        fc_cum += fc_v; rc_cum += rc_v
+        w = 1 if realized[i, fc] < realized[i, rc] else 0
+        win_hist.append(w); win_cum += w
+        if len(fc_hist) > gate_window:
+            fc_cum -= fc_hist.pop(0); rc_cum -= rc_hist.pop(0)
+            win_cum -= win_hist.pop(0)
+
+    trace = accumulate_trace(oracle_sub_t, oracle_sub_e, sub_lat, sub_nrg, actions, metric)
+    return (trace, actions, local_names) if _return_actions else trace
 
 
 def compute_trace_stats(actions, local_names):
@@ -332,18 +474,19 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
 
         sub_lat = trans_lat[np.ix_(idx_list, idx_list)]
         sub_nrg = trans_nrg[np.ix_(idx_list, idx_list)]
+        dec_lat = _decision_lat(sub_lat, idx_list)   # warmup-aware migration cost for decisions
         local_names = [configs[ci] for ci in idx_list]
 
         model_sub_t = model_time_mat[:, :n_chunks, :][:, :, idx_list]
         oracle_power = np.where(time_mat[:, idx_list] > 1e-12,
                                 energy_mat[:, idx_list] / time_mat[:, idx_list],
                                 1.0)
-        model_sub_e = model_sub_t * oracle_power[np.newaxis, :, :]
+        model_sub_e = model_sub_t * _decision_power(oracle_power, local_names)[np.newaxis, :, :]
 
         start_idx = start_idx_fn(idx_list, valid_configs) if start_idx_fn else len(idx_list) - 1
 
         if decision_mode == 'global':
-            path = decide_model_global(model_sub_t, model_sub_e, sub_lat, sub_nrg, metric,
+            path = decide_model_global(model_sub_t, model_sub_e, dec_lat, sub_nrg, metric,
                                        start_idx=start_idx)
             oracle_sub_t = time_mat[:, idx_list]
             oracle_sub_e = energy_mat[:, idx_list]
@@ -389,7 +532,7 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
             best = np.empty((n_act, n_chunks), dtype=np.int32)
             for a in range(n_act):
                 sa = src_map[a]
-                tot_t = mt[sa] + sub_lat[a, :][None, :]
+                tot_t = mt[sa] + dec_lat[a, :][None, :]
                 tot_e = me[sa] + sub_nrg[a, :][None, :]
                 best[a] = np.argmin(tot_e * (tot_t ** p_exp), axis=1)
 
@@ -432,7 +575,7 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                 else:
                     window_t = model_sub_t[si, row, :][np.newaxis, :]
                     window_e = model_sub_e[si, row, :][np.newaxis, :]
-                action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+                action = decide_greedy(window_t, window_e, dec_lat, sub_nrg, pidx, metric)
             elif decision_mode == 'mpc':
                 W = window_size or 1
                 n_future = min(W, n_chunks - i)
@@ -444,9 +587,9 @@ def make_model_policy_from_idx_list(idx_list_fn, decision_mode,
                     window_t = np.tile(model_sub_t[si, row, :], (n_future, 1))
                     window_e = np.tile(model_sub_e[si, row, :], (n_future, 1))
                 if n_future == 1:
-                    action = decide_greedy(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+                    action = decide_greedy(window_t, window_e, dec_lat, sub_nrg, pidx, metric)
                 else:
-                    action = decide_mpc(window_t, window_e, sub_lat, sub_nrg, pidx, metric)
+                    action = decide_mpc(window_t, window_e, dec_lat, sub_nrg, pidx, metric)
             else:
                 raise ValueError(f"Unknown decision_mode for model policy: {decision_mode}")
 

@@ -6,12 +6,33 @@
 import numpy as np
 
 from decision_policies import (make_policy_from_idx_list,
-                               make_model_policy_from_idx_list, _src_cfg_idx)
+                               make_model_policy_from_idx_list, _src_cfg_idx,
+                               reactive_fallback_gate_trace)
 from data_loader import ALL_MODEL_CONFIGS
 
 
 def _full_idx_list_fn(configs, valid_configs):
     return [configs.index(c) for c in valid_configs]
+
+
+def make_hetero_reactive_fallback_gate(gate_window=200, gate_stat='sum', gate_margin=0.0):
+    """Reactive-fallback outcome gate (heterogeneous core-by-frequency).
+
+    Fed the full forecast tensor and the full reactive translate tensor. Defaults to the
+    reactive model's core-and-frequency choice and switches to the forecast's choice only
+    where the forecast has yielded lower realized cost over a trailing window, capturing
+    forecast wins where behavior is changing. gate_stat/gate_margin tune how the window is
+    summarized (see reactive_fallback_gate_trace); 'logsum'/'winrate' are outlier-robust and
+    intended to close the ED2P gap where the plain 'sum' trigger is dominated by delay^2 tails.
+    """
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
+               trans_lat, trans_nrg, forecast_time_mat, reactive_time_mat, metric,
+               _return_actions=False):
+        return reactive_fallback_gate_trace(
+            time_mat, energy_mat, configs, valid_configs, trans_lat, trans_nrg,
+            forecast_time_mat, reactive_time_mat, _full_idx_list_fn, _src_cfg_idx,
+            gate_window, metric, _return_actions, gate_stat=gate_stat, gate_margin=gate_margin)
+    return policy
 
 
 def _last_core_local_idx(valid_configs, core_type):

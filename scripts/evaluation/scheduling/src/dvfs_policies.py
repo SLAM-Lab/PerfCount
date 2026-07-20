@@ -6,7 +6,8 @@
 # decision_policies.py / temporal_policies.py.
 import numpy as np
 
-from decision_policies import make_policy_from_idx_list, make_model_policy_from_idx_list
+from decision_policies import (make_policy_from_idx_list, make_model_policy_from_idx_list,
+                               reactive_fallback_gate_trace, _src_freq_idx)
 
 
 def _core_idx_list_fn(core_type):
@@ -514,6 +515,26 @@ def make_model_global(core_type='P'):
         idx_list_fn=_model_idx_list_fn(core_type),
         decision_mode='global',
     )
+
+
+def make_model_reactive_fallback_gate(core_type='P', gate_window=200):
+    """Reactive-fallback outcome gate (DVFS).
+
+    Fed the forecast tensor and the reactive translate tensor. Defaults to the reactive
+    model's choice and switches to the forecast's choice only where the forecast has yielded
+    lower realized cost over a trailing window, so it is never worse than reactive by design
+    while capturing forecast wins where behavior is changing.
+    """
+    idx_list_fn = _model_idx_list_fn(core_type)
+
+    def policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
+               trans_lat, trans_nrg, forecast_time_mat, reactive_time_mat, metric,
+               _return_actions=False):
+        return reactive_fallback_gate_trace(
+            time_mat, energy_mat, configs, valid_configs, trans_lat, trans_nrg,
+            forecast_time_mat, reactive_time_mat, idx_list_fn, _src_freq_idx,
+            gate_window, metric, _return_actions)
+    return policy
 
 
 def make_model_1_step_oracle_k(core_type='P', k=1):

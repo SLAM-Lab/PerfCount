@@ -71,24 +71,80 @@ def find_workloads(p_to_e_model_dir, pmu_dir=None, suite=None):
     """
     ref_dir = Path(p_to_e_model_dir) / "cpu0_1.0GHz_to_cpu16_1.0GHz"
     benches = sorted(p.stem.replace("model_", "") for p in ref_dir.glob("model_*.cbm"))
-    if benches == ['all_workloads'] and pmu_dir is not None:
+    # General / no-holdout training produces a single model applied to every workload, named
+    # either 'model_all_workloads.cbm' or 'model_general_*.cbm'. In that case the model dir
+    # carries no per-workload names, so discover the real bench names from the PMU traces.
+    real = [b for b in benches if b != 'all_workloads' and not b.startswith('general')]
+    if not real and pmu_dir is not None:
         import re
         pat = re.compile(r"aligned_(.+?)_[\d.]+GHz_cpu0_phase\d+\.csv")
         discovered = set()
-        for f in Path(pmu_dir).glob("aligned_*_cpu0_phase*.csv"):
+        # Scope discovery to the suite's PMU subdir so a cohort-specific model (e.g. dacapo_c1)
+        # only discovers workloads that have that cohort's traces; several DaCapo benches appear
+        # under both dacapo_c1 and dacapo_c2 with different counter sets.
+        root = Path(pmu_dir)
+        if suite is not None and (root / suite).is_dir():
+            root = root / suite
+        for f in root.rglob("aligned_*_cpu0_phase*.csv"):
             m = pat.match(f.name)
             if m:
                 discovered.add(m.group(1))
-        if suite and suite in _SUITE_PREFIXES:
-            discovered = {b for b in discovered if _SUITE_PREFIXES[suite](b)}
+        pred = _suite_predicate(suite)
+        if pred is not None:
+            discovered = {b for b in discovered if pred(b)}
         benches = sorted(discovered)
     return benches
 
 
-def find_phases(pmu_dir, bench, freq, core_suffix):
-    """Return dict mapping phase index -> file Path for (bench, freq, core_suffix)."""
+def _suite_predicate(suite):
+    """Map a suite DIRECTORY name (spec_2017, spec_2026, dacapo_c1, dacapo_c2) to its
+    workload-name predicate in _SUITE_PREFIXES, whose keys are underscore-free and collapse
+    the DaCapo cohorts. Without this normalization the suite filter silently no-ops and every
+    suite discovers all workloads."""
+    if suite is None:
+        return None
+    key = suite.replace('_', '')          # spec_2017 -> spec2017
+    if key.startswith('dacapo'):
+        key = 'dacapo'                     # dacapo_c1 / dacapo_c2 -> dacapo
+    return _SUITE_PREFIXES.get(key)
+
+
+def _load_pair_model(pair_dir, bench):
+    """Load the CatBoost model for (pair_dir, bench).
+
+    Prefers a per-workload model_{bench}.cbm (LOOCV). Falls back to a single general model
+    in the directory, either model_all_workloads.cbm or model_general_*.cbm, so the same
+    inference path serves LOOCV, no-holdout, and temporal-split general models.
+    """
+    from catboost import CatBoostRegressor
+    p = Path(pair_dir) / f"model_{bench}.cbm"
+    if not p.exists():
+        cands = sorted(Path(pair_dir).glob("model_all_workloads.cbm")) + \
+                sorted(Path(pair_dir).glob("model_general_*.cbm"))
+        p = cands[0] if cands else None
+    if p is None or not Path(p).exists():
+        return None
+    try:
+        m = CatBoostRegressor()
+        m.load_model(str(p))
+        return m
+    except Exception:
+        return None
+
+
+def find_phases(pmu_dir, bench, freq, core_suffix, suite=None):
+    """Return dict mapping phase index -> file Path for (bench, freq, core_suffix).
+
+    Scope to the suite's PMU subdir when given. Several DaCapo benchmarks appear under both
+    dacapo_c1 and dacapo_c2 with DIFFERENT counter sets, so an unscoped rglob mixes cohorts and
+    feeds the wrong counters to a cohort-specific model. The model is per cohort, so search only
+    that cohort's subdir.
+    """
+    root = Path(pmu_dir)
+    if suite is not None and (root / suite).is_dir():
+        root = root / suite
     phase_map = {}
-    for f in sorted(Path(pmu_dir).rglob(
+    for f in sorted(root.rglob(
             f"aligned_{bench}_{freq:.1f}GHz_{core_suffix}_phase*.csv")):
         phase_map[int(f.stem.rsplit("phase", 1)[-1])] = f
     return phase_map
@@ -116,7 +172,7 @@ def load_oracle_speedups(oracle_dir, bench, ph, src_core, src_freq, tgt_core):
 def _process_direction(bench, src_freqs, src_core, tgt_core,
                        model_subdir, core_suffix,
                        pmu_dir, oracle_dir, out_dir, feat_args,
-                       max_error_pct=None, input_counters=None):
+                       max_error_pct=None, input_counters=None, suite=None):
     """Run precompute for one direction (P->E or E->P). Returns list of MAPE values."""
     mapes = []
     for src_freq in src_freqs:
@@ -128,14 +184,14 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
         for tgt_freq in FREQS:
             tgt_ghz = f"{tgt_freq:.1f}GHz"
             pair_dir = model_subdir / f"{core_suffix[0]}_{src_ghz}_to_{core_suffix[1]}_{tgt_ghz}"
-            model = try_load_model(str(pair_dir), bench)
+            model = _load_pair_model(str(pair_dir), bench)
             if model is not None:
                 models[tgt_freq] = model
 
         if not models:
             continue
 
-        phase_map = find_phases(pmu_dir, bench, src_freq, core_suffix[0])
+        phase_map = find_phases(pmu_dir, bench, src_freq, core_suffix[0], suite)
         for ph, pmu_file in sorted(phase_map.items()):
             try:
                 df_pmu = pd.read_csv(pmu_file)
@@ -161,7 +217,16 @@ def _process_direction(bench, src_freqs, src_core, tgt_core,
             for tgt_freq, model in models.items():
                 tgt_ghz = f"{tgt_freq:.1f}GHz"
                 col = f"Speedup_{tgt_core}_{tgt_ghz}_vs_{src_core}_{src_ghz}"
-                pred_speedup = np.clip(1.0 / np.exp(model.predict(X.iloc[:n_out])), 1.0/15.0, 15.0)
+                # Select exactly the features the model was trained on (order + names),
+                # so a restricted top-k model consumes the full build_features output.
+                Xp = X.iloc[:n_out]
+                want = list(model.feature_names_)
+                missing = [c for c in want if c not in Xp.columns]
+                if missing:
+                    raise KeyError(
+                        f"{bench} {src_core}_{src_ghz}->{tgt_core}_{tgt_ghz}: PMU data "
+                        f"missing model features {missing}")
+                pred_speedup = np.clip(1.0 / np.exp(model.predict(Xp[want])), 1.0/15.0, 15.0)
 
                 oracle_key = f"{tgt_core}_{tgt_ghz}"
                 if oracle_speedups and oracle_key in oracle_speedups:
@@ -192,7 +257,8 @@ _ALL_SUITES = ['spec_2017', 'spec_2026', 'dacapo_c2']
 
 
 def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
-                   max_error_pct=None, input_counters=None, arch='x86'):
+                   max_error_pct=None, input_counters=None, arch='x86',
+                   feature_set='top4'):
     if suites is None:
         suites = _ALL_SUITES
     if max_error_pct is not None:
@@ -218,8 +284,8 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
 
     bench_to_dirs = {}
     for suite in suites:
-        b2l_dir = model_dir / big_to_little_subdir / suite / "full"
-        l2b_dir = model_dir / little_to_big_subdir / suite / "full"
+        b2l_dir = model_dir / big_to_little_subdir / suite / feature_set
+        l2b_dir = model_dir / little_to_big_subdir / suite / feature_set
         if not b2l_dir.exists():
             print(f"[WARN] {big_type}->{little_type} model dir not found for suite '{suite}': {b2l_dir}")
             continue
@@ -229,23 +295,23 @@ def run_precompute(model_dir, pmu_dir, oracle_dir, out_dir, suites=None,
         suite_benches = find_workloads(b2l_dir, pmu_dir, suite)
         print(f"Found {len(suite_benches)} workloads for {suite}: {suite_benches[:3]}...")
         for b in suite_benches:
-            bench_to_dirs[b] = (b2l_dir, l2b_dir)
+            bench_to_dirs[b] = (b2l_dir, l2b_dir, suite)
 
     if not bench_to_dirs:
         print("No workloads found across any suite.")
         return
 
     all_mape = []
-    for bench, (b2l_dir, l2b_dir) in bench_to_dirs.items():
+    for bench, (b2l_dir, l2b_dir, suite) in bench_to_dirs.items():
         bench_mapes = []
 
         bench_mapes += _process_direction(
             bench, FREQS, 'P', 'E', b2l_dir, ('cpu0', 'cpu16'),
-            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
+            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters, suite)
 
         bench_mapes += _process_direction(
             bench, FREQS, 'E', 'P', l2b_dir, ('cpu16', 'cpu0'),
-            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters)
+            pmu_dir, oracle_dir, out_dir, feat_args, max_error_pct, input_counters, suite)
 
         if bench_mapes:
             print(f"  {bench}: MAPE={np.mean(bench_mapes):.1f}% ({len(bench_mapes)} combos)")
@@ -274,9 +340,13 @@ def main():
     parser.add_argument("--input_counters", nargs='+', default=None,
                         help="Must match the --input_counters used during training. "
                              "Required when models were trained with a counter subset.")
+    parser.add_argument("--feature_set", default='top4',
+                        help="Model variant subdir under <model_dir>/<dir>/<suite>/ "
+                             "(top4, top6, or full). Default top4 (leak-free).")
     args = parser.parse_args()
     run_precompute(args.model_dir, args.pmu_dir, args.oracle_dir, args.out_dir,
-                   args.suites, args.max_error_pct, args.input_counters)
+                   args.suites, args.max_error_pct, args.input_counters,
+                   feature_set=args.feature_set)
 
 if __name__ == "__main__":
     main()

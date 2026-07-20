@@ -76,18 +76,44 @@ def find_workloads(model_dir, pmu_dir=None, cpu_id=None, suite=None):
         p.stem.replace("model_", "")
         for p in ref_dir.glob("model_*.cbm")
     )
-    if benches == ['all_workloads'] and pmu_dir is not None and cpu_id is not None:
+    # General / no-holdout training yields a single model (model_all_workloads.cbm or
+    # model_general_*.cbm) applied to every workload, so discover real benches from the PMU.
+    real = [b for b in benches if b != 'all_workloads' and not b.startswith('general')]
+    if not real and pmu_dir is not None and cpu_id is not None:
         import re
         pat = re.compile(rf"aligned_(.+?)_[\d.]+GHz_{cpu_id}_phase\d+\.csv")
         discovered = set()
-        for f in Path(pmu_dir).glob(f"aligned_*_{cpu_id}_phase*.csv"):
+        # Scope discovery to the cohort's PMU subdir (dacapo_c1 vs dacapo_c2 differ in counters).
+        root = Path(pmu_dir)
+        if suite is not None and (root / suite).is_dir():
+            root = root / suite
+        for f in root.rglob(f"aligned_*_{cpu_id}_phase*.csv"):
             m = pat.match(f.name)
             if m:
                 discovered.add(m.group(1))
-        if suite and suite in _SUITE_PREFIXES:
-            discovered = {b for b in discovered if _SUITE_PREFIXES[suite](b)}
+        pred = _suite_predicate(suite)
+        if pred is not None:
+            discovered = {b for b in discovered if pred(b)}
         benches = sorted(discovered)
     return benches
+
+
+def _suite_predicate(suite):
+    """Map a suite DIRECTORY name (spec_2017, spec_2026, dacapo_c1, ...) to its workload-name
+    predicate in _SUITE_PREFIXES, whose keys are underscore-free and collapse DaCapo cohorts."""
+    if suite is None:
+        return None
+    key = suite.replace('_', '')
+    if key.startswith('dacapo'):
+        key = 'dacapo'
+    return _SUITE_PREFIXES.get(key)
+
+
+def _cf_model_file(bench_name, feature_set):
+    """Model filename: per-workload LOOCV model_{bench}.cbm, or a single general model."""
+    if feature_set.startswith('general'):
+        return f'model_general_{feature_set}.cbm'
+    return f'model_{bench_name}.cbm'
 
 
 def find_phases(pmu_dir, bench, src_freq, cpu_id, suite=None):
@@ -178,7 +204,14 @@ def run_precompute(model_base_dir, pmu_dir, oracle_dir, out_dir, core_type='P',
             for tgt_freq in tgt_freqs:
                 tgt_ghz = f"{tgt_freq:.1f}GHz"
                 pair_dir = model_dir / f"{src_ghz}_to_{tgt_ghz}"
-                model = try_load_model(str(pair_dir), bench)
+                # model_dir's last component is the feature_set; general variants are a single
+                # model_general_*.cbm rather than a per-workload model_{bench}.cbm.
+                _mp = pair_dir / _cf_model_file(bench, model_dir.name)
+                if _mp.exists():
+                    from catboost import CatBoostRegressor as _CBR
+                    model = _CBR(); model.load_model(str(_mp))
+                else:
+                    model = None
                 if model is None:
                     print(f"  [WARN] No model for {bench} {src_ghz}->{tgt_ghz}, skipping")
                 else:

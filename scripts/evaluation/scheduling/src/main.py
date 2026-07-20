@@ -13,6 +13,7 @@ from data_loader import (load_phase_data, load_workload_data, _load_model_time_m
                          _load_e_model_time_mat, _load_cross_proc_time_mat,
                          _load_full_model_time_mat, build_oracle_axis_mat,
                          _load_forecast_oracle_mat)
+import decision_policies
 from decision_policies import compute_trace_stats, accumulate_trace
 import dvfs_policies as dvfs
 import scheduling_policies as sched
@@ -64,6 +65,10 @@ WARMUP_TAU_PtoE = 0.4   # decay time: P→E (chunks; warmup ~3-4M instr = 0.3-0.
 WARMUP_A_EtoP   = 0.12  # amplitude:  E→P peak slowdown (~12%; P-core warms faster)
 WARMUP_TAU_EtoP = 0.3   # decay time: E→P (chunks)
 WARMUP_K        = 10    # number of post-migration chunks to penalize (3 tau is enough)
+
+# Set from --warmup_in_decision before the worker pool forks, then read inside process_workload.
+WARMUP_IN_DECISION = False
+WARMUP_DECISION_SCALE = 1.0
 
 # P↔E context switch: mean 4.47μs, symmetric within 0.1μs (ctx_switch_bench, 10 reps × 5000 migrations)
 MIG_LAT_S  = 4.47e-6
@@ -305,6 +310,30 @@ def process_workload(wl, ph, pairs, input_path, configs,
 
     trans_lat, trans_nrg = build_transition_matrices(configs)
 
+    # Warmup-aware decision cost: give MODEL policies the expected cache-warmup delay of a
+    # cross-cluster migration in their decision argmin (decision-only, via the module global in
+    # decision_policies), leaving realized cost and post-hoc warmup untouched. The expected extra
+    # delay of one migration is A_dir * (sum_k exp(-k/tau_dir)) * (destination chunk time), the
+    # closed form of the exponential warmup ramp the scheduler charges post-hoc.
+    if WARMUP_IN_DECISION:
+        n_cfg = len(configs)
+        med_t = np.median(time_mat, axis=0)   # per-config representative chunk time
+        geom_PtoE = 1.0 / (1.0 - np.exp(-1.0 / WARMUP_TAU_PtoE))
+        geom_EtoP = 1.0 / (1.0 - np.exp(-1.0 / WARMUP_TAU_EtoP))
+        s = WARMUP_DECISION_SCALE
+        lat_extra = np.zeros((n_cfg, n_cfg))
+        for i in range(n_cfg):
+            for j in range(n_cfg):
+                if i == j or configs[i][0] == configs[j][0]:
+                    continue   # DVFS same-cluster switch has no cache-warmup penalty
+                if configs[i][0] == 'P' and configs[j][0] == 'E':
+                    lat_extra[i, j] = s * WARMUP_A_PtoE * geom_PtoE * med_t[j]
+                elif configs[i][0] == 'E' and configs[j][0] == 'P':
+                    lat_extra[i, j] = s * WARMUP_A_EtoP * geom_EtoP * med_t[j]
+        decision_policies.DECISION_LAT_EXTRA = lat_extra
+    else:
+        decision_policies.DECISION_LAT_EXTRA = None
+
     summary_results = []
     diag_results = []
 
@@ -377,6 +406,11 @@ def process_workload(wl, ph, pairs, input_path, configs,
                 dvfs.make_model_forecast_dampened('P', window=w), fc_p_args)
             p_calls[f'Model_Forecast_Commit{w}_P'] = (
                 dvfs.make_model_forecast_commit('P', window=w), fc_p_args)
+        # Reactive-fallback outcome gate: default to reactive, use forecast only where it has
+        # been winning over a trailing window. Fed both the forecast and reactive tensors.
+        rfg_p_args = (*policy_args, forecast_time_mat, model_time_mat)
+        p_calls['Model_Forecast_ReactiveGated_P'] = (
+            dvfs.make_model_reactive_fallback_gate('P'), rfg_p_args)
 
     # 2. E-Core DVFS Policies
     e_calls = {
@@ -437,6 +471,9 @@ def process_workload(wl, ph, pairs, input_path, configs,
                 dvfs.make_model_forecast_dampened('E', window=w), fc_e_args)
             e_calls[f'Model_Forecast_Commit{w}_E'] = (
                 dvfs.make_model_forecast_commit('E', window=w), fc_e_args)
+        rfg_e_args = (*policy_args, e_forecast_time_mat, e_model_time_mat)
+        e_calls['Model_Forecast_ReactiveGated_E'] = (
+            dvfs.make_model_reactive_fallback_gate('E'), rfg_e_args)
 
     if fc_un_p_mat is not None:
         # Phase-UNAWARE forecast: identical policy, forecaster trained without phase
@@ -500,9 +537,17 @@ def process_workload(wl, ph, pairs, input_path, configs,
     }
     if cross_proc_time_mat is not None:
         cross_proc_args = (*policy_args, cross_proc_time_mat)
+        # The isofrequency MPC/k-step/damp/commit sweep is a lookahead-horizon SENSITIVITY
+        # family, not part of the reactive/forecast/gate/governor comparison. Its MPC oracles
+        # are Python O(n*W) Viterbi loops with horizons up to 100 at four frequencies, which
+        # dominate runtime on large phases (W100 ~ 64s on a 20k-chunk phase). FAST_HETERO=1
+        # skips them, keeping only the two cheap isofreq references.
+        _fast_hetero = os.environ.get('FAST_HETERO')
         for freq in ['1.0GHz', '2.0GHz', '3.0GHz', '4.0GHz']:
             hetero_calls[f'Model_IsoFreq_{freq}']        = (sched.make_isofreq_model(freq),        cross_proc_args)
             hetero_calls[f'IsoFreq_Model_Oracle_{freq}'] = (sched.make_isofreq_model_oracle(freq), cross_proc_args)
+            if _fast_hetero:
+                continue
             for k in [1, 2, 5]:
                 hetero_calls[f'IsoFreq_Model_Oracle_k{k}_{freq}'] = (sched.make_isofreq_model_oracle_k(freq, k=k), cross_proc_args)
             for h in [5, 10, 20, 50, 100]:
@@ -517,6 +562,8 @@ def process_workload(wl, ph, pairs, input_path, configs,
         cp_fc_args = (*policy_args, cross_proc_forecast_time_mat)
         for freq in ['1.0GHz', '2.0GHz', '3.0GHz', '4.0GHz']:
             hetero_calls[f'Model_IsoFreq_Forecast_{freq}'] = (sched.make_isofreq_model_oracle(freq), cp_fc_args)
+            if os.environ.get('FAST_HETERO'):
+                continue
             for w in [5, 10]:
                 hetero_calls[f'Model_IsoFreq_Forecast_Damp{w}_{freq}'] = (
                     sched.make_isofreq_model_forecast_dampened(freq, window=w), cp_fc_args)
@@ -578,6 +625,23 @@ def process_workload(wl, ph, pairs, input_path, configs,
                 sched.make_hetero_model_forecast_dampened(window=w), ff_args)
             hetero_calls[f'Model_Forecast_Commit{w}_Hetero'] = (
                 sched.make_hetero_model_forecast_commit(window=w), ff_args)
+        if full_model_time_mat is not None:
+            # Reactive-fallback outcome gate over the full core x freq space: default to the
+            # reactive translate choice, use forecast only where it has been winning.
+            gate_args = (*policy_args, full_forecast_time_mat, full_model_time_mat)
+            hetero_calls['Model_Forecast_ReactiveGated_Hetero'] = (
+                sched.make_hetero_reactive_fallback_gate(), gate_args)
+            # Outlier-robust trigger variants, aimed at closing the ED2P gap where the plain
+            # 'sum' trigger is dominated by delay^2 tails. Swept over window and margin.
+            for gs in ('logsum', 'winrate'):
+                for gw in (100, 200, 400):
+                    hetero_calls[f'Model_Forecast_ReactiveGated_{gs}_w{gw}_Hetero'] = (
+                        sched.make_hetero_reactive_fallback_gate(gate_window=gw, gate_stat=gs),
+                        gate_args)
+            for gm in (2, 5):
+                hetero_calls[f'Model_Forecast_ReactiveGated_logsum_m{gm}_Hetero'] = (
+                    sched.make_hetero_reactive_fallback_gate(gate_stat='logsum', gate_margin=gm/100.0),
+                    gate_args)
 
     if fc_un_full_mat is not None:
         hetero_calls['Model_Forecast_Unaware_Hetero'] = (sched.make_hetero_model_oracle(),
@@ -650,7 +714,9 @@ def process_workload(wl, ph, pairs, input_path, configs,
 
     def _run_calls(calls, traces_by_metric):
         """Evaluate all policies, using dual-metric fast path for metric-independent ones."""
+        _time_pol = os.environ.get('SIM_TIME_POLICIES')
         for name, (fn, args_) in calls.items():
+            _t0 = __import__('time').perf_counter() if _time_pol else 0
             if getattr(fn, 'metric_independent', False):
                 # Dual-metric fast path: one action sequence, scored under both metrics.
                 # Warmup must still be charged -- the heterogeneous heuristics are
@@ -708,6 +774,10 @@ def process_workload(wl, ph, pairs, input_path, configs,
                     tr, st = _call_with_stats(fn, *args_, metric=m)
                     traces_by_metric[m][name] = tr
                     _record_diag(diag_results, wl, ph, m, name, st)
+            if _time_pol:
+                _dt = __import__('time').perf_counter() - _t0
+                if _dt > 1.0:
+                    print(f"[SLOW POLICY] {wl} ph{ph}: {name} took {_dt:.1f}s", flush=True)
 
     p_traces   = {m: {} for m in METRICS}
     e_traces   = {m: {} for m in METRICS}
@@ -752,6 +822,26 @@ def main():
     parser.add_argument('--power_mode', type=str, default='per_sample', choices=['per_sample', 'baseline'],
                          help="'per_sample' uses measured per-chunk power (default); "
                               "'baseline' uses the fixed get_power_w lookup table for all configs.")
+    parser.add_argument('--warmup_decision_scale', type=float, default=1.0,
+                        help="Multiplier on the warmup-aware decision deterrent (only with "
+                             "--warmup_in_decision). 1.0 uses the physical warmup amplitude; larger "
+                             "values make the decision more migration-averse, trading migration wins "
+                             "for fewer over-migrations under ED2P.")
+    parser.add_argument('--warmup_in_decision', action='store_true',
+                        help="Make MODEL policies pay the expected cache-warmup delay of a P<->E "
+                             "migration in their DECISION (added to the transition latency the argmin "
+                             "sees), while realized/reported cost and post-hoc warmup are unchanged. "
+                             "The base transition cost omits warmup and warmup is otherwise charged "
+                             "only after the fact, so the greedy decision over-migrates. Under ED2P the "
+                             "(T+lat)^2 term squares this deterrent, so it is automatically "
+                             "metric-scaled. Aimed at the ED2P over-migration on dynamic workloads.")
+    parser.add_argument('--decision_power_mode', type=str, default='oracle', choices=['oracle', 'static'],
+                         help="Power the MODEL policies (reactive/forecast/gate) use when DECIDING "
+                              "which config to pick. 'oracle' (default, historical) multiplies predicted "
+                              "time by true per-chunk power — not deployable (a runtime scheduler cannot "
+                              "observe another config's live power). 'static' uses the characterized "
+                              "get_power_w per-config table instead, so the model decides with an estimate "
+                              "and pays the true per-chunk cost. The oracle is unaffected either way.")
     parser.add_argument('--cross_freq_p_pred_dir', type=str, default=None,
                         help="Directory with precomputed P-core cross-freq model predictions "
                              "(output of cross_freq_precompute.py). When provided, adds "
@@ -828,6 +918,19 @@ def main():
     # when the caller asserts the prediction set should be complete.
     data_loader.STRICT_PREDICTIONS = args.strict_predictions
     data_loader.reset_fallback_counts()
+
+    # Deployable power for model DECISIONS: when 'static', model policies choose configs
+    # using the characterized per-config get_power_w table rather than true per-chunk power.
+    # The oracle and all realized/reported costs still use true per-chunk power.
+    if args.decision_power_mode == 'static':
+        import decision_policies as _dp
+        _dp.DECISION_POWER_LOOKUP = data_loader.get_power_w
+
+    # Warmup-aware decision cost. Set the module global before the worker pool forks so the
+    # forked workers inherit it; each worker then builds its own per-phase DECISION_LAT_EXTRA.
+    global WARMUP_IN_DECISION, WARMUP_DECISION_SCALE
+    WARMUP_IN_DECISION = args.warmup_in_decision
+    WARMUP_DECISION_SCALE = args.warmup_decision_scale
 
     import pandas as pd
 
