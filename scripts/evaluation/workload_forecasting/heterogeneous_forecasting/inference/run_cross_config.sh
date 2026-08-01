@@ -32,12 +32,17 @@ HORIZONS="${HORIZONS:-1}"
 TIMESTEPS="${TIMESTEPS:-5}"
 
 VARIANT="${VARIANT:-top4}"
+# VARIANT is only the output-CSV tag, so a caller can name the file 'modelcmp'.
+# MODEL_VARIANT is the forecaster/counter set actually loaded and must be a real
+# predict_cross_config variant (top4|top4b). They differ when the tag is 'modelcmp'.
+MODEL_VARIANT="${MODEL_VARIANT:-top4}"
 TRANSLATE="${TRANSLATE:-ref_cycles}"
 TAG=""; echo "$TRANSLATE" | grep -q cpu_cycles && TAG="_refcpu"
 OUT="$REPO_ROOT/results/forecasting/cross_config/cross_config_10M_${VARIANT}${TAG}.csv"
+mkdir -p "$(dirname "$OUT")"
 
 # Discover benchmark 'rest' names from the cpu0 forecasters of this variant (H1/T5 index).
-REF_DIR="$REPO_ROOT/results/forecasting/models_10M/x86_desktop_heterogeneous_cpu0_${VARIANT}/4.0GHz/horizon_1/timesteps_5"
+REF_DIR="$REPO_ROOT/results/forecasting/models_10M/x86_desktop_heterogeneous_cpu0_${MODEL_VARIANT}/4.0GHz/horizon_1/timesteps_5"
 if [ -z "${BENCHES:-}" ]; then
     BENCHES=$(find "$REF_DIR" -maxdepth 1 \( -name '*_dt.pkl' -o -name '*_dt.joblib' \) 2>/dev/null \
         | sed -E 's#.*/aligned_(.+)_4\.0GHz_cpu0_dt\.(pkl|joblib)#\1#' | sort -u || true)
@@ -60,7 +65,7 @@ for m in $MODELS; do
     for t in $TIMESTEPS; do
       for b in $BENCHES; do
         echo "--- $b | $m | H:$h | T:$t ---"
-        "$PYTHON" "$HARNESS" --benchmark "$b" --model "$m" --variant "$VARIANT" \
+        "$PYTHON" "$HARNESS" --benchmark "$b" --model "$m" --variant "$MODEL_VARIANT" \
             --translate $TRANSLATE --horizon "$h" --timesteps "$t" --out "$OUT" 2>/dev/null \
             | grep -E "MAPE" || echo "  (no results)"
       done

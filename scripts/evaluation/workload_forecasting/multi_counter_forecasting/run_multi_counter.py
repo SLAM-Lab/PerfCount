@@ -24,6 +24,7 @@ Usage:
       python run_multi_counter.py --cpu 0
 """
 import os
+import sys
 import re
 import argparse
 import subprocess
@@ -81,7 +82,7 @@ BENCHES = os.environ.get("BENCHES", (
     "spec_721.gcc_r spec_722.palm_r spec_723.llvm_r spec_727.cppcheck_r spec_729.abc_r "
     "spec_731.astcenc_r spec_734.vpr_r spec_735.gem5_r spec_736.ocio_r spec_737.gmsh_r "
     "spec_748.flightdm_r spec_749.fotonik3d_r spec_750.sealcrypto_r spec_753.ns3_r "
-    "spec_765.roms_r spec_766.femflow_r spec_767.nest_r spec_777.zstd_r spec_782.lbm_r").split())
+    "spec_765.roms_r spec_766.femflow_r spec_767.nest_r spec_777.zstd_r spec_782.lbm_r")).split()
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WF_DIR     = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
@@ -123,7 +124,9 @@ def run_job(job):
     log_file = os.path.join(ldir, f"{workload}_{m}.log")
     if is_ok(log_file):
         return
-    cmd = ["python3", "src/forecasting.py", "--benchmark", workload,
+    # Use THIS interpreter (the venv python that launched us), not a bare "python3"
+    # off PATH -- under nohup/cron the PATH python is the system one without pandas.
+    cmd = [sys.executable, "src/forecasting.py", "--benchmark", workload,
            "--dataset", MACHINE, "--input_counters", *ordered,
            "--model", m, "--timesteps", str(TIMESTEPS), "--forecast_horizon", str(HORIZON),
            "--epochs", str(EPOCHS), "--batch_size", "32", "--neurons", "16",

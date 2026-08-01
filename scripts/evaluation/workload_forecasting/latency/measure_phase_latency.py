@@ -50,9 +50,14 @@ MODELS = os.environ.get("PHASE_LAT_MODELS", "dt mlp lstm transformer").split()
 NATIVE = {"dt": "sklearn", "mlp": "keras", "lstm": "keras", "transformer": "keras"}
 
 
+ENS_SUFFIX = os.environ.get("PHASE_LAT_SUFFIX", "_gmm_delta")
+
+
 def ensembles_for(core, model, n_benches):
-    """Return up to n_benches ensemble dirs (absolute, non-delta) for this core+model."""
-    pat = os.path.join(ENSEMBLE_ROOT, f"aligned_*_{core}", f"{model}_gmm")
+    """Return up to n_benches ensemble dirs (absolute) for this core+model.
+    Defaults to the residual-over-persistence (delta) ensembles the study saves,
+    matching <model>_gmm_delta exactly (not the _hetinfer variants)."""
+    pat = os.path.join(ENSEMBLE_ROOT, f"aligned_*_{core}", f"{model}{ENS_SUFFIX}")
     dirs = sorted(d for d in glob.glob(pat) if os.path.isfile(os.path.join(d, "metadata.json")))
     return dirs[:n_benches]
 

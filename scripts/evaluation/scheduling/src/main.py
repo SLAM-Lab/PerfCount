@@ -1,6 +1,7 @@
 import argparse
 import hashlib
 import json
+import math
 import os
 import re
 import numpy as np
@@ -20,16 +21,36 @@ import scheduling_policies as sched
 import plotter
 import combined_policies as comb
 import warmup_model
+from platform_model import (                      # measured hardware parameters
+    WARMUP_A_PtoE, WARMUP_TAU_PtoE, WARMUP_A_EtoP, WARMUP_TAU_EtoP, WARMUP_K,
+    WARMUP_A_SCALE, WARMUP_TAU_SCALE, MIG_LAT_SCALE,
+    MIG_LAT_S, MIG_NRG_J, DVFS_LAT_S, DVFS_NRG_J,
+    P_LAT_US, E_LAT_US, P_NRG_J, E_NRG_J,
+    ARM_WARMUP_A_BtoL, ARM_WARMUP_TAU_BtoL, ARM_WARMUP_A_LtoB, ARM_WARMUP_TAU_LtoB,
+    ARM_WARMUP_K, ARM_MIG_LAT_S, ARM_MIG_NRG_J, ARM_DVFS_LAT_S, ARM_DVFS_NRG_J,
+    ARM_L_LAT_US, ARM_L_NRG_J, ARM_B_LAT_US, ARM_B_NRG_J,
+)
 
 
 # v2: all policies (incl. the Viterbi oracles) now start pinned to the same config.
-VITERBI_CACHE_VERSION = 2
+VITERBI_CACHE_VERSION = 3  # v3: warmup-aware oracle DP + recalibrated POWER_W
+
+# Exploratory policies (gate-trigger sweeps, reactive-axis damp/commit) are null results that are
+# not in the chapter; they only clutter every summary. Off by default so a production run emits
+# the chapter-relevant set. The regression harness sets it on, so their values stay protected.
+SIM_EXPLORATORY = os.environ.get('SIM_EXPLORATORY', '') not in ('', '0', 'false', 'False')
 
 
-def _call_with_stats(policy_fn, *args, **kwargs):
-    """Call a policy, returning (trace, stats_dict | None)."""
+def _call_with_stats(policy_fn, *args, _acts_out=None, **kwargs):
+    """Call a policy, returning (trace, stats_dict | None).
+
+    `_acts_out`, when given a list, receives (actions, local_names) so the caller can
+    dump the per-chunk decision sequence.
+    """
     if getattr(policy_fn, 'returns_actions', False):
         trace, actions, local_names = policy_fn(*args, _return_actions=True, **kwargs)
+        if _acts_out is not None:
+            _acts_out.append((actions, local_names))
         return trace, compute_trace_stats(list(actions), local_names)
     return policy_fn(*args, **kwargs), None
 
@@ -45,113 +66,14 @@ def _record_diag(diag_results, wl, ph, m_type, name, st):
     })
 
 # ==========================================
-# GLOBAL HARDWARE DEFINES
+# RUN-TIME POLICY SETTINGS
 # ==========================================
-# Cache warm-up penalty parameters (fill in from warmup_params.csv after measurement).
-# Set both A values to 0.0 to verify results are identical to the no-penalty baseline.
-# Estimates for 10M-instruction chunks on Intel Alder Lake:
-#   L3 is shared between P/E clusters, so only L1d/L2 + branch predictor + hw prefetchers
-#   go cold after migration.  Dominant costs at this chunk size:
-#     L2 cache cold-start (1-4M instruction warmup):   ~10-15% peak slowdown
-#     BTB/BHT miss spike (200K-1M instruction warmup): ~3-8% peak slowdown (gcc/perlbench worst)
-#     HW prefetcher retraining (50-200K accesses):     ~3-5% peak slowdown (memory-bound)
-#   P→E is larger: E-core shares 2MB L2 across 4 cores (~0.5MB effective) vs 1.25MB on P,
-#   and Golden Cove has more aggressive prefetch/BTB units that warm faster on E→P.
-#   tau in CHUNK units (1 chunk = 10M instructions ≈ 1-3ms at 3-4GHz):
-#     warmup completes in ~3-4M instructions = 0.3-0.4 chunks → tau ≈ 0.4 P→E, 0.3 E→P.
-#   Replace with warmup_collection.sh measurements when available.
-WARMUP_A_PtoE   = 0.20  # amplitude:  P→E peak slowdown (~20% at migration point)
-WARMUP_TAU_PtoE = 0.4   # decay time: P→E (chunks; warmup ~3-4M instr = 0.3-0.4 chunks)
-WARMUP_A_EtoP   = 0.12  # amplitude:  E→P peak slowdown (~12%; P-core warms faster)
-WARMUP_TAU_EtoP = 0.3   # decay time: E→P (chunks)
-WARMUP_K        = 10    # number of post-migration chunks to penalize (3 tau is enough)
-
-# Set from --warmup_in_decision before the worker pool forks, then read inside process_workload.
-WARMUP_IN_DECISION = False
-WARMUP_DECISION_SCALE = 1.0
-
-# P↔E context switch: mean 4.47μs, symmetric within 0.1μs (ctx_switch_bench, 10 reps × 5000 migrations)
-MIG_LAT_S  = 4.47e-6
-# Migration energy (J), keyed by (P_freq, E_freq) of the two cores involved
-# in the migration: MIG_NRG_J = migration_active_power_W × MIG_LAT_S, where
-# migration_active_power_W is the median measured package power (RAPL
-# power/energy-cores) while ctx_switch_bench runs continuous P↔E migrations
-# at that frequency pair (power_collection/ctx_switch/freq_sweep_power/,
-# analyze_migration_energy.py -> migration_energy_summary.csv).
-#
-# This replaces an earlier idle-subtraction approach (duty-cycled bench +
-# same-core control, see analyze_duty_test.py) that tried to isolate the
-# ~1-10nJ energy of a single migration as a delta against RAPL's ~50ms /
-# ~10-50mW noise floor and produced sign-flipping, order-of-magnitude-unstable
-# results. Using the directly-measured *active* power (O(1-25W), the same
-# convention as P_NRG_J/E_NRG_J's Trans_P95_W × stall_latency) avoids that
-# noise floor entirely, at the cost of including some non-migration-specific
-# background power in the estimate.
-MIG_NRG_J = {
-    (1.0, 1.0): 5.35e-06,  (1.0, 2.0): 8.92e-06,  (1.0, 3.0): 2.139e-05, (1.0, 4.0): 8.909e-05,
-    (2.0, 1.0): 8.93e-06,  (2.0, 2.0): 1.25e-05,  (2.0, 3.0): 2.589e-05, (2.0, 4.0): 9.637e-05,
-    (3.0, 1.0): 1.875e-05, (3.0, 2.0): 2.054e-05, (3.0, 3.0): 2.852e-05, (3.0, 4.0): 0.00010253,
-    (4.0, 1.0): 4.012e-05, (4.0, 2.0): 5.893e-05, (4.0, 3.0): 5.974e-05, (4.0, 4.0): 0.0001061,
-}
-DVFS_LAT_S = 5.0e-6    # fallback for freq pairs not in P_LAT_US/E_LAT_US
-DVFS_NRG_J = 2e-5      # fallback
-
-
-# DVFS transition latencies (μs): simple_latency.c + analyze_dvfs.py, 100 reps each.
-# Median across reps (robust to the long right tail seen on some downscale/E-core
-# transitions, where the core occasionally steps through an intermediate P-state).
-# Entries that measured 0.00 (transition completes within a single ~1 sample
-# compute kernel, below the rolling-median detection resolution) are floored to
-# one sample period at the target frequency: P-core 3GHz=2.68us, E-core 4GHz=3.01us,
-# E-core 3GHz=4.02us.
-P_LAT_US = {
-    (1.0, 2.0): 4.02,  (1.0, 3.0): 2.68,  (1.0, 4.0): 2.01,
-    (2.0, 1.0): 7.93,  (2.0, 3.0): 2.68,  (2.0, 4.0): 2.01,
-    (3.0, 1.0): 8.04,  (3.0, 2.0): 2.68,  (3.0, 4.0): 2.01,
-    (4.0, 1.0): 8.04,  (4.0, 2.0): 2.22,  (4.0, 3.0): 2.68,  # floored (median 0.00)
-}
-E_LAT_US = {
-    (1.0, 2.0): 6.03,  (1.0, 3.0): 8.02,  (1.0, 4.0): 6.04,
-    (2.0, 1.0): 12.04, (2.0, 3.0): 4.02,  (2.0, 4.0): 3.01,
-    (3.0, 1.0): 12.04, (3.0, 2.0): 4.01,  (3.0, 4.0): 3.01,  # floored (median 0.00)
-    (4.0, 1.0): 12.06, (4.0, 2.0): 3.69,  (4.0, 3.0): 4.02,  # floored (median 0.00)
-}
-
-# DVFS transition energy (J) = Trans_P95_W × stall_latency
-P_NRG_J = {
-    (1.0, 2.0): 2.1e-05,  (1.0, 3.0): 1.6e-05,  (1.0, 4.0): 1.3e-05,
-    (2.0, 1.0): 5.8e-05,  (2.0, 3.0): 2.1e-05,  (2.0, 4.0): 1.8e-05,
-    (3.0, 1.0): 8.4e-05,  (3.0, 2.0): 5.7e-05,  (3.0, 4.0): 2.6e-05,
-    (4.0, 1.0): 0.000117, (4.0, 2.0): 6.6e-05,  (4.0, 3.0): 4.7e-05,
-}
-E_NRG_J = {
-    (1.0, 2.0): 2.3e-05,  (1.0, 3.0): 1.6e-05,  (1.0, 4.0): 1.5e-05,
-    (2.0, 1.0): 5.8e-05,  (2.0, 3.0): 2.2e-05,  (2.0, 4.0): 2.0e-05,
-    (3.0, 1.0): 7.1e-05,  (3.0, 2.0): 4.4e-05,  (3.0, 4.0): 2.9e-05,
-    (4.0, 1.0): 0.0002,   (4.0, 2.0): 0.000132, (4.0, 3.0): 9.7e-05,
-}
-
-# --- ARM big.LITTLE (Qualcomm RB5 / Snapdragon 865) placeholder parameters ---
-# L = Little (Silver, Cortex-A55), B = Big (Gold, Cortex-A76)
-# These are estimates; replace with measured values when available.
-ARM_WARMUP_A_BtoL   = 0.20
-ARM_WARMUP_TAU_BtoL = 0.4
-ARM_WARMUP_A_LtoB   = 0.12
-ARM_WARMUP_TAU_LtoB = 0.3
-ARM_WARMUP_K        = 10
-
-ARM_MIG_LAT_S  = 5.0e-6
-ARM_MIG_NRG_J  = {
-    (1.0, 1.0): 5.0e-06,
-}
-ARM_DVFS_LAT_S = 5.0e-6
-ARM_DVFS_NRG_J = 2e-5
-
-ARM_L_LAT_US = {}
-ARM_L_NRG_J  = {}
-ARM_B_LAT_US = {}
-ARM_B_NRG_J  = {}
-
+# Measured hardware parameters (power, transition costs, warmup) live in platform_model.py.
+# What stays here is set per run from the CLI, before the worker pool forks, and read inside
+# process_workload by each forked worker.
+WARMUP_IN_DECISION = False      # --warmup_in_decision: fold expected warmup into the argmin
+WARMUP_DECISION_SCALE = 1.0     # --warmup_decision_scale: how strongly (decision only)
+DECISION_POWER_DIR = None       # --decision_power_dir: per-sample predicted decision power
 
 def get_dvfs_cost(start_cfg, end_cfg):
     """Calculates true Latency (s) and Energy (J) for a specific frequency hop."""
@@ -315,30 +237,70 @@ def process_workload(wl, ph, pairs, input_path, configs,
     # decision_policies), leaving realized cost and post-hoc warmup untouched. The expected extra
     # delay of one migration is A_dir * (sum_k exp(-k/tau_dir)) * (destination chunk time), the
     # closed form of the exponential warmup ramp the scheduler charges post-hoc.
-    if WARMUP_IN_DECISION:
+    # Per-chunk predicted decision power for this phase, when configured. Missing files leave
+    # the policy on the characterized static table rather than silently falling back to truth.
+    import decision_policies as _dp_mod
+    _dp_mod.DECISION_POWER_PRED = None
+    if DECISION_POWER_DIR:
+        _pf = os.path.join(DECISION_POWER_DIR, f'{wl}_phase{ph}.csv')
+        if os.path.exists(_pf):
+            try:
+                import pandas as _pd
+                _pdf = _pd.read_csv(_pf)
+                _dp_mod.DECISION_POWER_PRED = {
+                    c.replace('PredPower_', ''): _pdf[c].values
+                    for c in _pdf.columns if c.startswith('PredPower_')}
+            except Exception:
+                _dp_mod.DECISION_POWER_PRED = None
+
+    # The expected warmup delay of one cross-cluster migration has two consumers. The Viterbi
+    # oracle plans against it whenever warmup is charged, so it stays a valid bound (it planned
+    # warmup-blind before and could be beaten by the warmup-aware policies it bounds, most
+    # visibly on DaCapo whose constant-power model removes the energy penalty that otherwise
+    # discourages spurious oracle migrations). Deployable MODEL policies additionally fold it
+    # into their decision argmin only under --warmup_in_decision, scaled by the deterrent knob.
+    lat_extra = None
+    if WARMUP_IN_DECISION or apply_warmup:
         n_cfg = len(configs)
         med_t = np.median(time_mat, axis=0)   # per-config representative chunk time
         geom_PtoE = 1.0 / (1.0 - np.exp(-1.0 / WARMUP_TAU_PtoE))
         geom_EtoP = 1.0 / (1.0 - np.exp(-1.0 / WARMUP_TAU_EtoP))
-        s = WARMUP_DECISION_SCALE
         lat_extra = np.zeros((n_cfg, n_cfg))
         for i in range(n_cfg):
             for j in range(n_cfg):
                 if i == j or configs[i][0] == configs[j][0]:
                     continue   # DVFS same-cluster switch has no cache-warmup penalty
                 if configs[i][0] == 'P' and configs[j][0] == 'E':
-                    lat_extra[i, j] = s * WARMUP_A_PtoE * geom_PtoE * med_t[j]
+                    lat_extra[i, j] = WARMUP_A_PtoE * geom_PtoE * med_t[j]
                 elif configs[i][0] == 'E' and configs[j][0] == 'P':
-                    lat_extra[i, j] = s * WARMUP_A_EtoP * geom_EtoP * med_t[j]
-        decision_policies.DECISION_LAT_EXTRA = lat_extra
-    else:
-        decision_policies.DECISION_LAT_EXTRA = None
+                    lat_extra[i, j] = WARMUP_A_EtoP * geom_EtoP * med_t[j]
+    decision_policies.ORACLE_LAT_EXTRA = lat_extra if apply_warmup else None
+    decision_policies.DECISION_LAT_EXTRA = (
+        WARMUP_DECISION_SCALE * lat_extra
+        if (WARMUP_IN_DECISION and lat_extra is not None) else None)
 
     summary_results = []
     diag_results = []
 
     # Define common arguments for policy calls
     policy_args = (time_mat, energy_mat, proxy_signal, configs, valid_configs, trans_lat, trans_nrg)
+
+    # Forecasted proxy: the utilization proxy (slow/fast config time ratio) computed from the
+    # causal forecast tensor instead of the true trace, so a governor can run in a "forecast"
+    # temporal mode -- deciding on the PREDICTED next interval rather than the prior chunk
+    # (reactive) or the true next chunk (perfect future). Averaged over source rows; reuses the
+    # same slow/fast configs as the true proxy. This is what makes a forecast heuristic
+    # model-dependent: a better cross-platform forecast yields a better-informed governor.
+    policy_args_forecast = None
+    _fc_src = full_forecast_time_mat if full_forecast_time_mat is not None else forecast_time_mat
+    if _fc_src is not None:
+        _fc_cfg = np.asarray(_fc_src).mean(axis=0)          # (n_chunks, n_configs)
+        _vidx = [configs.index(c) for c in valid_configs]
+        _mt = time_mat[:, _vidx].mean(axis=0)
+        _slow = _vidx[int(np.argmax(_mt))]; _fast = _vidx[int(np.argmin(_mt))]
+        if _fc_cfg.ndim == 2 and _fc_cfg.shape[1] > max(_slow, _fast):
+            _fcp = _fc_cfg[:len(time_mat), _slow] / (_fc_cfg[:len(time_mat), _fast] + 1e-9)
+            policy_args_forecast = (time_mat, energy_mat, _fcp, configs, valid_configs, trans_lat, trans_nrg)
 
     METRICS = ['EDP', 'ED2P']
 
@@ -376,6 +338,16 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Greedy_Oracle_P':       (dvfs.make_proactive_1_step('P'),           policy_args),
         'Global_Oracle_P':       (dvfs.make_global_viterbi('P'),             policy_args),
     }
+    # --- Forecast heuristics: same governors fed the FORECASTED next-chunk proxy ---
+    if policy_args_forecast is not None:
+        for _n, _fn in [('Ondemand_Forecast_P',     dvfs.make_ondemand('P',      temporal_mode='oracle_heuristic')),
+                        ('Conservative_Forecast_P', dvfs.make_conservative('P',  temporal_mode='oracle_heuristic')),
+                        ('Schedutil_Forecast_P',    dvfs.make_schedutil_pelt('P', temporal_mode='oracle_heuristic')),
+                        ('Interactive_Forecast_P',  dvfs.make_interactive('P',   temporal_mode='oracle_heuristic')),
+                        ('Intel_HWP_Forecast_P',    dvfs.make_intel_hwp('P',     temporal_mode='oracle_heuristic')),
+                        ('EWMA_Forecast_P',         dvfs.make_ewma_dvfs('P',     temporal_mode='oracle_heuristic')),
+                        ('UCB1_Forecast_P',         dvfs.make_ucb1_dvfs('P',     temporal_mode='oracle_heuristic'))]:
+            p_calls[_n] = (_fn, policy_args_forecast)
     if model_time_mat is not None:
         model_policy_args = (*policy_args, model_time_mat)
         p_calls.update({
@@ -443,6 +415,16 @@ def process_workload(wl, ph, pairs, input_path, configs,
         'Greedy_Oracle_E':       (dvfs.make_proactive_1_step('E'),           policy_args),
         'Global_Oracle_E':       (dvfs.make_global_viterbi('E'),             policy_args),
     }
+    # --- Forecast heuristics: same governors fed the FORECASTED next-chunk proxy ---
+    if policy_args_forecast is not None:
+        for _n, _fn in [('Ondemand_Forecast_E',     dvfs.make_ondemand('E',      temporal_mode='oracle_heuristic')),
+                        ('Conservative_Forecast_E', dvfs.make_conservative('E',  temporal_mode='oracle_heuristic')),
+                        ('Schedutil_Forecast_E',    dvfs.make_schedutil_pelt('E', temporal_mode='oracle_heuristic')),
+                        ('Interactive_Forecast_E',  dvfs.make_interactive('E',   temporal_mode='oracle_heuristic')),
+                        ('Intel_HWP_Forecast_E',    dvfs.make_intel_hwp('E',     temporal_mode='oracle_heuristic')),
+                        ('EWMA_Forecast_E',         dvfs.make_ewma_dvfs('E',     temporal_mode='oracle_heuristic')),
+                        ('UCB1_Forecast_E',         dvfs.make_ucb1_dvfs('E',     temporal_mode='oracle_heuristic'))]:
+            e_calls[_n] = (_fn, policy_args_forecast)
     if e_model_time_mat is not None:
         e_model_policy_args = (*policy_args, e_model_time_mat)
         e_calls.update({
@@ -576,11 +558,12 @@ def process_workload(wl, ph, pairs, input_path, configs,
         hetero_calls['Model_Greedy_Oracle_Hetero']   = (sched.make_hetero_model_oracle(),   full_model_args)
         for k in [1, 2, 5]:
             hetero_calls[f'Model_Greedy_Oracle_k{k}_Hetero'] = (sched.make_hetero_model_oracle_k(k=k), full_model_args)
-        # Reactive-axis decision variants. These read the MODEL tensor, so they belong
-        # here and not under the forecast guard.
-        for w in [5, 10]:
-            hetero_calls[f'Model_Reactive_Damp{w}_Hetero'] = (sched.make_hetero_model_dampened(window=w), full_model_args)
-            hetero_calls[f'Model_Reactive_Commit{w}_Hetero'] = (sched.make_hetero_model_commit(window=w), full_model_args)
+        # Reactive-axis decision variants (exploratory: the chapter's commit/damp are the FORECAST
+        # ones below). These read the MODEL tensor, so they belong here and not under the forecast guard.
+        if SIM_EXPLORATORY:
+            for w in [5, 10]:
+                hetero_calls[f'Model_Reactive_Damp{w}_Hetero'] = (sched.make_hetero_model_dampened(window=w), full_model_args)
+                hetero_calls[f'Model_Reactive_Commit{w}_Hetero'] = (sched.make_hetero_model_commit(window=w), full_model_args)
         for h in [5, 10]:
             hetero_calls[f'Model_MPC_Oracle_W{h}_Hetero'] = (sched.make_hetero_model_mpc_oracle(horizon=h), full_model_args)
     # --- 2x2: which model is responsible for the heterogeneous deficit? ---
@@ -631,17 +614,18 @@ def process_workload(wl, ph, pairs, input_path, configs,
             gate_args = (*policy_args, full_forecast_time_mat, full_model_time_mat)
             hetero_calls['Model_Forecast_ReactiveGated_Hetero'] = (
                 sched.make_hetero_reactive_fallback_gate(), gate_args)
-            # Outlier-robust trigger variants, aimed at closing the ED2P gap where the plain
-            # 'sum' trigger is dominated by delay^2 tails. Swept over window and margin.
-            for gs in ('logsum', 'winrate'):
-                for gw in (100, 200, 400):
-                    hetero_calls[f'Model_Forecast_ReactiveGated_{gs}_w{gw}_Hetero'] = (
-                        sched.make_hetero_reactive_fallback_gate(gate_window=gw, gate_stat=gs),
+            # Outlier-robust trigger variants (exploratory null: swept over window and margin to
+            # try to close the ED2P gap where the plain 'sum' trigger is dominated by delay^2 tails).
+            if SIM_EXPLORATORY:
+                for gs in ('logsum', 'winrate'):
+                    for gw in (100, 200, 400):
+                        hetero_calls[f'Model_Forecast_ReactiveGated_{gs}_w{gw}_Hetero'] = (
+                            sched.make_hetero_reactive_fallback_gate(gate_window=gw, gate_stat=gs),
+                            gate_args)
+                for gm in (2, 5):
+                    hetero_calls[f'Model_Forecast_ReactiveGated_logsum_m{gm}_Hetero'] = (
+                        sched.make_hetero_reactive_fallback_gate(gate_stat='logsum', gate_margin=gm/100.0),
                         gate_args)
-            for gm in (2, 5):
-                hetero_calls[f'Model_Forecast_ReactiveGated_logsum_m{gm}_Hetero'] = (
-                    sched.make_hetero_reactive_fallback_gate(gate_stat='logsum', gate_margin=gm/100.0),
-                    gate_args)
 
     if fc_un_full_mat is not None:
         hetero_calls['Model_Forecast_Unaware_Hetero'] = (sched.make_hetero_model_oracle(),
@@ -696,7 +680,7 @@ def process_workload(wl, ph, pairs, input_path, configs,
         trace, actions, local_names = fn(*args_, _return_actions=True, metric=m)
         st = compute_trace_stats(list(actions), local_names)
         if WARMUP_A_PtoE == 0.0 and WARMUP_A_EtoP == 0.0:
-            return trace, st
+            return trace, st, actions, local_names
         # Reconstruct the submatrix for this policy's action space from the full matrices.
         # args_[0]=time_mat, args_[1]=energy_mat, args_[3]=configs, args_[5]=trans_lat, args_[6]=trans_nrg
         idx = [configs.index(c) for c in local_names]
@@ -710,7 +694,24 @@ def process_workload(wl, ph, pairs, input_path, configs,
             WARMUP_A_EtoP, WARMUP_TAU_EtoP, WARMUP_K,
         )
         trace = accumulate_trace(pen_t, e_sub, lat_sub, nrg_sub, actions, metric=m)
-        return trace, st
+        return trace, st, actions, local_names
+
+    # Per-chunk decision dump. DUMP_ACTIONS_DIR turns it on; DUMP_ACTIONS_POLICIES is an
+    # optional comma-separated filter. Writes the configuration chosen at every chunk so a
+    # policy's decisions can be compared against the oracle's sample by sample, which the
+    # aggregate config fractions cannot show.
+    _dump_dir = os.environ.get('DUMP_ACTIONS_DIR')
+    _dump_pols = {p for p in os.environ.get('DUMP_ACTIONS_POLICIES', '').split(',') if p}
+
+    def _dump_actions(name, m, actions, local_names):
+        if not _dump_dir or (_dump_pols and name not in _dump_pols):
+            return
+        d = Path(_dump_dir); d.mkdir(parents=True, exist_ok=True)
+        import csv as _csv
+        with open(d / f'{wl}__{ph}__{m}__{name}.csv', 'w', newline='') as fh:
+            w_ = _csv.writer(fh); w_.writerow(['chunk', 'config'])
+            for i_, a_ in enumerate(actions):
+                w_.writerow([i_, local_names[a_]])
 
     def _run_calls(calls, traces_by_metric):
         """Evaluate all policies, using dual-metric fast path for metric-independent ones."""
@@ -725,6 +726,7 @@ def process_workload(wl, ph, pairs, input_path, configs,
                 traces, actions, local_names = fn(*args_, metrics=METRICS, _return_actions=True)
                 st = compute_trace_stats(list(actions), local_names)
                 for m in METRICS:
+                    _dump_actions(name, m, actions, local_names)
                     traces_by_metric[m][name] = (_trace_from_path(actions, local_names, m)
                                                  if apply_warmup else traces[m])
                     _record_diag(diag_results, wl, ph, m, name, st)
@@ -762,16 +764,21 @@ def process_workload(wl, ph, pairs, input_path, configs,
                             np.savez(cache_file, actions=np.asarray(actions),
                                      names=np.array(local_names, dtype='U16'))
                     st = compute_trace_stats(list(actions), local_names)
+                    _dump_actions(name, m, actions, local_names)
                     traces_by_metric[m][name] = _trace_from_path(actions, local_names, m)
                     _record_diag(diag_results, wl, ph, m, name, st)
             elif apply_warmup and getattr(fn, 'returns_actions', False):
                 for m in METRICS:
-                    tr, st = _apply_warmup_trace(fn, args_, m)
+                    tr, st, _acts, _lnames = _apply_warmup_trace(fn, args_, m)
+                    _dump_actions(name, m, _acts, _lnames)
                     traces_by_metric[m][name] = tr
                     _record_diag(diag_results, wl, ph, m, name, st)
             else:
                 for m in METRICS:
-                    tr, st = _call_with_stats(fn, *args_, metric=m)
+                    _ao = []
+                    tr, st = _call_with_stats(fn, *args_, metric=m, _acts_out=_ao)
+                    if _ao:
+                        _dump_actions(name, m, *_ao[0])
                     traces_by_metric[m][name] = tr
                     _record_diag(diag_results, wl, ph, m, name, st)
             if _time_pol:
@@ -784,10 +791,29 @@ def process_workload(wl, ph, pairs, input_path, configs,
     hetero_traces   = {m: {} for m in METRICS}
     combined_traces = {m: {} for m in METRICS}
 
-    _run_calls(p_calls,       p_traces)
-    _run_calls(e_calls,       e_traces)
-    _run_calls(hetero_calls,  hetero_traces)
-    _run_calls(combined_calls, combined_traces)
+    # ARM edge (L/B cores) has 3 configs and no trained model, so the P/E DVFS sweeps and the
+    # P/E-hardcoded heuristics do not apply. Run only the config-agnostic hetero policies:
+    # the same reactive / perfect-future / global-oracle ladder the x86 study reports.
+    if 'B_1.0GHz' in configs or 'L_1.0GHz' in configs:
+        arm_calls = {
+            'Reactive_Oracle_Hetero':  (sched.make_reactive_oracle_hetero(), policy_args),
+            'Greedy_Oracle_Hetero':    hetero_calls['Greedy_Oracle_Hetero'],
+            'Proactive_Hetero_Oracle': hetero_calls['Proactive_Hetero_Oracle'],
+        }
+        # Heterogeneous heuristics need both core types (L<->B migration). They are core-type
+        # generic now (via _core_types), so they run on ARM unchanged; skip them for the
+        # big-core-only DVFS variant, where there is no little core to migrate to.
+        if 'L_1.0GHz' in configs:
+            for h in ('EAS_Hetero', 'EAS_With_DVFS', 'Threshold_Migration', 'Thread_Director',
+                      'Micro_EAS', 'UCB1_Hetero', 'EAS_Oracle_Hetero', 'Thread_Director_Oracle'):
+                if h in hetero_calls:
+                    arm_calls[h] = hetero_calls[h]
+        _run_calls(arm_calls, hetero_traces)
+    else:
+        _run_calls(p_calls,       p_traces)
+        _run_calls(e_calls,       e_traces)
+        _run_calls(hetero_calls,  hetero_traces)
+        _run_calls(combined_calls, combined_traces)
 
     # Mirror shared industry policies into combined_traces
     for key in ('EAS_Hetero', 'EAS_With_DVFS', 'Threshold_Migration', 'Thread_Director',
@@ -835,7 +861,11 @@ def main():
                              "only after the fact, so the greedy decision over-migrates. Under ED2P the "
                              "(T+lat)^2 term squares this deterrent, so it is automatically "
                              "metric-scaled. Aimed at the ED2P over-migration on dynamic workloads.")
-    parser.add_argument('--decision_power_mode', type=str, default='oracle', choices=['oracle', 'static'],
+    parser.add_argument('--decision_power_dir', type=str, default=None,
+                        help="Directory of per-chunk predicted power files (<wl>_phase<N>.csv with "
+                             "PredPower_<config> columns), used by --decision_power_mode predicted.")
+    parser.add_argument('--decision_power_mode', type=str, default='oracle',
+                        choices=['oracle', 'static', 'predicted'],
                          help="Power the MODEL policies (reactive/forecast/gate) use when DECIDING "
                               "which config to pick. 'oracle' (default, historical) multiplies predicted "
                               "time by true per-chunk power — not deployable (a runtime scheduler cannot "
@@ -901,15 +931,16 @@ def main():
     parser.add_argument('--apply_warmup', action='store_true', default=False,
                         help="Apply cache-warmup time penalty after P↔E migrations. "
                              "Uses WARMUP_A/TAU/K constants defined in main.py. "
-                             "Only affects policies that return an action sequence; "
-                             "Viterbi oracle baselines are evaluated without warmup.")
+                             "The realized penalty is charged post-hoc to every policy that "
+                             "migrates, and the Viterbi oracle DP additionally plans against "
+                             "the expected warmup delay so it stays a valid bound.")
     parser.add_argument('--cross_phase', action='store_true', default=False,
                         help="Concatenate all phases per workload into one long trace "
                              "before simulation. Phase-transition chunks are then visible "
                              "in-band, exposing the reactive vs oracle gap at transitions. "
                              "Results are labeled Phase='all'. Use a separate --output_dir "
                              "to avoid mixing with per-phase results.")
-    parser.add_argument('--arch', type=str, default='x86', choices=['x86', 'arm_edge'],
+    parser.add_argument('--arch', type=str, default='x86', choices=['x86', 'arm_edge', 'arm_edge_big'],
                         help="Target architecture: 'x86' (P/E cores) or 'arm_edge' (L/B cores)")
     args = parser.parse_args()
 
@@ -922,9 +953,17 @@ def main():
     # Deployable power for model DECISIONS: when 'static', model policies choose configs
     # using the characterized per-config get_power_w table rather than true per-chunk power.
     # The oracle and all realized/reported costs still use true per-chunk power.
-    if args.decision_power_mode == 'static':
+    if args.decision_power_mode in ('static', 'predicted'):
         import decision_policies as _dp
+        # keep the characterized table as the fallback for any config lacking a prediction
         _dp.DECISION_POWER_LOOKUP = data_loader.get_power_w
+        # Optional power-quality sweep: blend the static table toward true per-sample power by
+        # DECISION_POWER_BLEND in [0,1] (0 = static, 1 = oracle). Set before the worker pool forks.
+        _blend = os.environ.get('DECISION_POWER_BLEND')
+        if _blend is not None and args.decision_power_mode == 'static':
+            _dp.DECISION_POWER_BLEND = float(_blend)
+    global DECISION_POWER_DIR
+    DECISION_POWER_DIR = args.decision_power_dir if args.decision_power_mode == 'predicted' else None
 
     # Warmup-aware decision cost. Set the module global before the worker pool forks so the
     # forked workers inherit it; each worker then builds its own per-phase DECISION_LAT_EXTRA.
@@ -946,8 +985,14 @@ def main():
     # Bump VITERBI_CACHE_VERSION whenever the DP or the start convention changes:
     # env_tag covers the data a path depends on, not the code that produced it, so a
     # stale cache would otherwise silently return paths from the previous semantics.
+    # The oracle path now depends on warmup: with --apply_warmup the DP plans against the
+    # warmup ramp (valid-bound fix), so it differs from a warmup-blind path. Key on it and on
+    # the warmup amplitudes so warmup-aware and warmup-blind paths never share a cache entry.
+    _warm_tag = (f'w{int(args.apply_warmup)}:{WARMUP_A_PtoE},{WARMUP_A_EtoP},'
+                 f'{WARMUP_TAU_PtoE},{WARMUP_TAU_EtoP},{WARMUP_K},{MIG_LAT_S}')
     env_tag = hashlib.md5(
-        f'{args.input_dir}|{args.power_mode}|v{VITERBI_CACHE_VERSION}'.encode()).hexdigest()[:8]
+        f'{args.input_dir}|{args.power_mode}|{_warm_tag}|v{VITERBI_CACHE_VERSION}'.encode()
+    ).hexdigest()[:8]
 
     input_path = Path(args.input_dir)
     output_path = Path(args.output_dir)
@@ -973,7 +1018,12 @@ def main():
 
     if args.arch == 'arm_edge':
         pattern = re.compile(r"speedups_([LB]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
-        configs = ['L_1.0GHz', 'B_1.0GHz']
+        configs = ['L_1.0GHz', 'B_1.0GHz', 'B_2.0GHz']
+    elif args.arch == 'arm_edge_big':
+        # OoO big-core DVFS only: two frequencies, no little core, no migration. Same
+        # reactive/perfect-future/oracle policies as arm_edge, restricted to the B configs.
+        pattern = re.compile(r"speedups_(B_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
+        configs = ['B_1.0GHz', 'B_2.0GHz']
     else:
         pattern = re.compile(r"speedups_([PE]_[0-9.]+GHz)_(.+)_phase(\d+)\.csv")
         configs = ['E_1.0GHz', 'E_2.0GHz', 'E_3.0GHz', 'E_4.0GHz',
@@ -1028,7 +1078,10 @@ def main():
 
     all_summary = []
     all_diag = []
-    with concurrent.futures.ProcessPoolExecutor() as executor:
+    # SIM_WORKERS caps the pool so several studies can share the machine without
+    # oversubscribing it. Unset means one study takes every core, as before.
+    _nw = int(os.environ.get('SIM_WORKERS', 0)) or None
+    with concurrent.futures.ProcessPoolExecutor(max_workers=_nw) as executor:
         futures = {
             executor.submit(
                 process_workload, wl, ph, pairs, input_path, configs,

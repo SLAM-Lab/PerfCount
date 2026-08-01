@@ -5,6 +5,7 @@
 # (temporal_policies.py) + a decision function into the
 # `policy(time_mat, energy_mat, proxy_signal, configs, valid_configs,
 # trans_lat, trans_nrg, metric) -> trace` shape used throughout main.py.
+import os
 import numpy as np
 
 import temporal_policies as temporal
@@ -12,6 +13,16 @@ import temporal_policies as temporal
 
 def _exp(metric):
     return 2 if metric == 'ED2P' else 1
+
+
+# Decision hysteresis (dead-band). A deployable scheduler that re-decides every chunk from noisy
+# forecasts flip-flops frequency whenever two configs have near-equal predicted cost -- the
+# transition latency of a DVFS change is ~5us against a ~1.9ms chunk, so nothing damps it, and a
+# deployable diagonal (no perfect stay-anchor) makes it 4-10x worse. Real DVFS governors solve
+# this with an up/down threshold gap. DECISION_HYSTERESIS h makes the incumbent look a factor
+# (1-h) cheaper in the argmin, so a switch happens only when another config beats the incumbent by
+# more than h. Default 0 == off, so every shipped (oracle-diagonal) number is unchanged.
+DECISION_HYSTERESIS = float(os.environ.get('DECISION_HYSTERESIS', '0') or '0')
 
 
 # Power used by MODEL policies (reactive/forecast/gate) when *deciding* which config
@@ -26,18 +37,49 @@ def _exp(metric):
 # per-chunk power, so it remains a valid bound.
 DECISION_POWER_LOOKUP = None
 
+# Per-chunk PREDICTED decision power, as {config_name: array(n_chunks)}. Set per phase when
+# --decision_power_mode predicted is used. This is the deployable middle ground between the
+# static table and true per-chunk power: the ratio of a target config's power to the measured
+# power of the config actually running is predictable from counters, whereas absolute power is
+# not. Note a per-chunk scalar common to every config cannot change argmin_c P_c * T_c^p, so
+# only a ratio that VARIES ACROSS configs per chunk can move a decision -- which is precisely
+# what the static table (a fixed ratio) cannot supply.
+DECISION_POWER_PRED = None
+# Optional blend of the static table toward true per-sample power for a controlled power-quality
+# sweep: decision power = (1-a)*static + a*oracle_power, a in [0,1]. a=0 is the deployable static
+# table, a=1 is the oracle. Only applied in the static-table path (LOOKUP set, PRED None).
+DECISION_POWER_BLEND = None
+
 
 def _decision_power(oracle_power, local_names):
     """Per-chunk power tensor to use for MODEL DECISIONS.
 
-    oracle_power: (n_chunks, n_act) true per-chunk power. Returned unchanged when no
-    static lookup is configured. When DECISION_POWER_LOOKUP is set, returns a static
-    per-config power broadcast across chunks (deployable characterized estimate).
+    oracle_power: (n_chunks, n_act) true per-chunk power. Returned unchanged when nothing is
+    configured. With DECISION_POWER_PRED set, returns the predicted per-chunk power. With
+    DECISION_POWER_LOOKUP set, returns a static per-config power broadcast across chunks.
+    Realized/reported cost always uses true power, so the model decides on an estimate and
+    pays the true cost.
     """
+    if DECISION_POWER_PRED is not None:
+        n_chunks = oracle_power.shape[0]
+        out = np.empty_like(oracle_power, dtype=float)
+        for j, nm in enumerate(local_names):
+            v = DECISION_POWER_PRED.get(nm)
+            if v is None or len(v) < n_chunks:
+                # fall back to the characterized constant for any config without a prediction
+                out[:, j] = (DECISION_POWER_LOOKUP(nm) if DECISION_POWER_LOOKUP
+                             else oracle_power[:, j])
+            else:
+                out[:, j] = v[:n_chunks]
+        return out
     if DECISION_POWER_LOOKUP is None:
         return oracle_power
     pv = np.array([DECISION_POWER_LOOKUP(n) for n in local_names], dtype=float)
-    return np.broadcast_to(pv[None, :], oracle_power.shape)
+    static = np.broadcast_to(pv[None, :], oracle_power.shape)
+    if DECISION_POWER_BLEND is not None:
+        a = float(DECISION_POWER_BLEND)
+        return (1.0 - a) * static + a * oracle_power
+    return static
 
 
 # Extra transition latency, in the same time units as the traces, added to the migration
@@ -52,6 +94,13 @@ def _decision_power(oracle_power, local_names):
 # under EDP, i.e. it is automatically metric-scaled. The oracle and heuristics are unaffected.
 DECISION_LAT_EXTRA = None
 
+# Expected warmup latency the Viterbi ORACLE plans against, set whenever warmup is charged.
+# The oracle is a bound, so it must plan against the cost it is later scored with, otherwise
+# it plans warmup-blind, over-migrates, and can be beaten by the warmup-aware policies it is
+# meant to bound. This is unscaled (physical amplitude), unlike DECISION_LAT_EXTRA which the
+# deterrent knob may scale for deployable model policies.
+ORACLE_LAT_EXTRA = None
+
 
 def _decision_lat(sub_lat, idx_list):
     """Transition latency used for a MODEL DECISION. True sub_lat unless a warmup-aware
@@ -59,6 +108,15 @@ def _decision_lat(sub_lat, idx_list):
     if DECISION_LAT_EXTRA is None:
         return sub_lat
     return sub_lat + DECISION_LAT_EXTRA[np.ix_(idx_list, idx_list)]
+
+
+def _oracle_lat(sub_lat, idx_list):
+    """Transition latency used for the ORACLE Viterbi DECISION. True sub_lat unless warmup is
+    being charged, in which case the expected warmup delay of a migration is added so the DP
+    plans against it. Scoring still uses raw sub_lat; the true ramp is charged post-hoc."""
+    if ORACLE_LAT_EXTRA is None:
+        return sub_lat
+    return sub_lat + ORACLE_LAT_EXTRA[np.ix_(idx_list, idx_list)]
 
 
 def decide_greedy(window_t, window_e, sub_lat, sub_nrg, prev_idx, metric):
@@ -77,6 +135,9 @@ def decide_greedy(window_t, window_e, sub_lat, sub_nrg, prev_idx, metric):
         lat_costs = sub_lat[prev_idx, :] + wt
         nrg_costs = sub_nrg[prev_idx, :] + we
     costs = nrg_costs * (lat_costs ** p)
+    if prev_idx is not None and DECISION_HYSTERESIS:
+        costs = costs.copy()
+        costs[prev_idx] *= (1.0 - DECISION_HYSTERESIS)   # dead-band: leave only if beaten by > h
     return int(np.argmin(costs))
 
 
@@ -650,7 +711,10 @@ def make_policy_from_idx_list(idx_list_fn, temporal_mode, decision_mode,
         start_idx = start_idx_fn(idx_list, valid_configs) if start_idx_fn else len(idx_list) - 1
 
         if decision_mode == 'global':
-            path = decide_global(sub_t, sub_e, sub_lat, sub_nrg, metric, start_idx=start_idx)
+            # Plan against the warmup it will be charged (valid-bound fix); score on raw lat,
+            # since the true warmup ramp is applied post-hoc by the caller.
+            dec_lat = _oracle_lat(sub_lat, idx_list)
+            path = decide_global(sub_t, sub_e, dec_lat, sub_nrg, metric, start_idx=start_idx)
             trace = accumulate_trace(sub_t, sub_e, sub_lat, sub_nrg, path, metric)
             return (trace, path, local_names) if _return_actions else trace
 

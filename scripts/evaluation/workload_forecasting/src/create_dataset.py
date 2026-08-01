@@ -203,16 +203,32 @@ def _bench_suite_dir(bench_name):
     return None
 
 
+# Feature set / model variant used by the forecaster's translation step. Default 'top4'
+# reproduces the per-workload LOOCV models. Set CBM_FEATURE_SET=general_temporal or
+# general_insample to translate through the single no-holdout general model instead, so the
+# forecast can be evaluated at each cross-processor / cross-frequency model quality.
+CBM_FEATURE_SET = os.environ.get('CBM_FEATURE_SET', 'top4')
+
+
+def _cbm_model_file(bench_name, feature_set=None):
+    """Model filename for a translation pair. Per-workload LOOCV uses model_{bench}.cbm;
+    a general/no-holdout variant is a single model_general_{feature_set}.cbm."""
+    fs = feature_set if feature_set is not None else CBM_FEATURE_SET
+    if fs.startswith('general'):
+        return f'model_general_{fs}.cbm'
+    return f'model_{bench_name}.cbm'
+
+
 def _load_cbm(cbm_model_dir, src_freq, tgt_freq, bench_name):
     """Load a CatBoost cross-frequency translation model, or None if not found.
     cbm_model_dir is the per-cpu root containing
-    {suite}/top4/{src}GHz_to_{tgt}GHz/model_{bench}.cbm."""
+    {suite}/{feature_set}/{src}GHz_to_{tgt}GHz/model_*.cbm."""
     suite = _bench_suite_dir_cross_freq(bench_name)
     if suite is None:
         return None
     path = os.path.join(
-        cbm_model_dir, suite, 'top4',
-        f'{src_freq}GHz_to_{tgt_freq}GHz', f'model_{bench_name}.cbm'
+        cbm_model_dir, suite, CBM_FEATURE_SET,
+        f'{src_freq}GHz_to_{tgt_freq}GHz', _cbm_model_file(bench_name)
     )
     if not os.path.exists(path):
         return None
@@ -228,9 +244,9 @@ def _load_cbm_cross_proc(cbm_cross_proc_dir, src_cpu, src_freq, tgt_cpu, tgt_fre
         return None
     path = os.path.join(
         cbm_cross_proc_dir,
-        f'cpu{src_cpu}_to_cpu{tgt_cpu}', suite, 'top4',
+        f'cpu{src_cpu}_to_cpu{tgt_cpu}', suite, CBM_FEATURE_SET,
         f'cpu{src_cpu}_{src_freq}GHz_to_cpu{tgt_cpu}_{tgt_freq}GHz',
-        f'model_{bench_name}.cbm'
+        _cbm_model_file(bench_name)
     )
     if not os.path.exists(path):
         return None

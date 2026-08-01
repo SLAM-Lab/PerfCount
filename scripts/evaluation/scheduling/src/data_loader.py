@@ -1,4 +1,5 @@
 # data_loader.py
+import os
 import pandas as pd
 import numpy as np
 
@@ -53,10 +54,23 @@ def fallback_report():
 # Per-configuration mean power (W), from a full-run RAPL average with the idle
 # baseline subtracted. Used in 'baseline' power mode, and for any config lacking
 # measured per-chunk power.
+# Measured mean total power per configuration, averaged over all SPEC workload-phases
+# (per-workload-phase mean, then averaged equally). The earlier values tracked the
+# frequency-dependent dynamic component but omitted a roughly constant ~1.2 W fixed
+# power floor (package/uncore/idle), which under-costed the low frequencies far more
+# than the high ones (a constant additive offset is a large fraction of a small number).
+# Under EDP the greedy minimizes P_c * T_c^2, so the omitted floor F * T_c^2 is largest
+# at the low frequencies where T is largest, making them look artificially cheap and
+# driving a systematic underclock. Recalibrating to the measured means (which include
+# the floor) removes the underclock while staying deployable: it is a one-time platform
+# characterization needing no per-workload or per-chunk knowledge at runtime.
 POWER_W = {
-    'P_1.0GHz': 0.58, 'P_2.0GHz': 2.14, 'P_3.0GHz': 5.50, 'P_4.0GHz': 13.17,
-    'E_1.0GHz': 0.44, 'E_2.0GHz': 1.38, 'E_3.0GHz': 4.70, 'E_4.0GHz': 16.89,
-    'L_1.0GHz': 12.50, 'B_1.0GHz': 11.73, 'B_2.0GHz': 11.51,
+    'P_1.0GHz': 1.83, 'P_2.0GHz': 3.75, 'P_3.0GHz': 6.86, 'P_4.0GHz': 14.05,
+    'E_1.0GHz': 1.29, 'E_2.0GHz': 2.47, 'E_3.0GHz': 5.40, 'E_4.0GHz': 17.64,
+    # ARM RB5 (Kryo 585): idle-subtracted DYNAMIC watts vs the config-matched awake-idle
+    # baseline (absolute board power is inverted/untrustworthy on this board). ARM uses
+    # baseline power mode -- per-chunk ARM power is too noisy -- so these are the operative values.
+    'L_1.0GHz': 0.31, 'B_1.0GHz': 2.32, 'B_2.0GHz': 3.75,
 }
 
 
@@ -81,7 +95,7 @@ P_MODEL_FREQS = [1.0, 2.0, 3.0, 4.0]
 E_MODEL_FREQS = [1.0, 2.0, 3.0, 4.0]
 
 ARM_L_MODEL_FREQS = [1.0]
-ARM_B_MODEL_FREQS = [1.0]
+ARM_B_MODEL_FREQS = [1.0, 2.0]
 
 # Source-config ordering for the cross-proc time tensor (axis 0).
 # E-cores first (indices 0-3), then P-cores (indices 4-7).
@@ -93,7 +107,80 @@ ALL_MODEL_CONFIGS = [
 ARM_ALL_MODEL_CONFIGS = [
     'L_1.0GHz',
     'B_1.0GHz',
+    'B_2.0GHz',
 ]
+
+
+
+# ---------------------------------------------------------------------------
+# What a policy is told about the configuration it is ALREADY running on.
+# ---------------------------------------------------------------------------
+# The prediction tensors hold a model estimate for every configuration except the one the policy
+# currently occupies; that entry ("the diagonal") is the policy's "should I stay?" score. Every
+# off-diagonal ("should I move?") score is a forward forecast. DIAGONAL_MODE fills the diagonal:
+#
+#   'oracle' (default)  the TRUE next sample. Ground truth for a sample that has not run yet, which
+#                       no scheduler has, so the incumbent is judged on a different standard from
+#                       its rivals -- an idealization that favours staying. Every shipped chapter
+#                       number currently uses this; default keeps existing results byte-identical.
+#   'self_forecast'     the incumbent configuration's OWN causal forecast. Forward-looking, so it
+#                       shares a time-basis with the move scores, and fully deployable. This is the
+#                       correct fair diagonal. The call site must supply the forecast series
+#                       (self_fc); it is not derivable from the measured trace alone.
+#   'prev'              the previous sample's measurement. Deployable but BROKEN: "stay" is then
+#                       backward-looking while every "move" score is a forward forecast, so on any
+#                       noisy sample a neighbour's forecast beats the stale stay-score and the
+#                       policy migrates, then migrates back. Measured: 4-10x more frequency
+#                       transitions than 'oracle'. Kept only as a diagnostic -- do not report it.
+#
+# Every diagonal write must agree. _load_full_model_time_mat merges tensors with an elementwise
+# minimum and relies on both writing the SAME value there; build_oracle_axis_mat's 2x2 tensors go
+# through the same merge.
+#
+# Read once from the environment. DEPLOYABLE_DIAGONAL is the old binary flag (1 -> 'prev').
+DIAGONAL_MODE = os.environ.get('DIAGONAL_MODE')
+if not DIAGONAL_MODE:
+    _dep = os.environ.get('DEPLOYABLE_DIAGONAL', '0')
+    DIAGONAL_MODE = 'prev' if _dep not in ('0', '', 'false', 'False') else 'oracle'
+if DIAGONAL_MODE not in ('oracle', 'prev', 'self_forecast'):
+    raise ValueError(f"DIAGONAL_MODE must be oracle|prev|self_forecast, got {DIAGONAL_MODE!r}")
+
+
+SELF_FORECAST_DIR = os.environ.get('SELF_FORECAST_DIR')   # self-forecast dumps for DIAGONAL_MODE='self_forecast'
+_self_fc_cache = {}
+
+
+def _self_fc(wl, ph, cfg):
+    """Incumbent config's own causal self-forecast series, or None. Reads
+    SELF_FORECAST_DIR/<cfg>/<wl>_phase<ph>.csv column Time_pred_<cfg> (cfg like 'P_1.0GHz').
+    Inert unless DIAGONAL_MODE=='self_forecast', so it never touches the oracle/prev paths."""
+    if DIAGONAL_MODE != 'self_forecast' or not SELF_FORECAST_DIR:
+        return None
+    key = (wl, ph, cfg)
+    if key not in _self_fc_cache:
+        f = os.path.join(SELF_FORECAST_DIR, cfg, f"{wl}_phase{ph}.csv")
+        try:
+            _self_fc_cache[key] = pd.read_csv(f)[f"Time_pred_{cfg}"].values.astype(float)
+        except Exception:
+            _self_fc_cache[key] = None
+    return _self_fc_cache[key]
+
+
+def _incumbent(series, self_fc=None):
+    """Value the policy gets for the configuration it is already on (the 'stay' score)."""
+    if DIAGONAL_MODE == 'oracle':
+        return series                       # true next sample (idealized, favours staying)
+    if DIAGONAL_MODE == 'self_forecast':
+        if self_fc is None:                 # no self-forecast (oracle-axis bound / missing file) -> oracle
+            return series
+        out = np.array(series, dtype=float)
+        m = min(len(out), len(self_fc))
+        out[:m] = self_fc[:m]               # incumbent's own forward forecast, same basis as the moves
+        return out
+    out = np.empty_like(series)             # 'prev': previous sample (diagnostic only -- thrashes)
+    out[0] = series[0]                      # nothing measured before the first sample
+    out[1:] = series[:-1]
+    return out
 
 
 def _load_speedup_dict(speedup_files):
@@ -242,7 +329,7 @@ def _load_model_time_mat(wl, ph, model_pred_dir, configs, min_len, oracle_time_m
         # Src config itself: oracle time (diagonal)
         if src_cfg in configs:
             ci = configs.index(src_cfg)
-            model_time_mat[si, :n, ci] = time_src[:n]
+            model_time_mat[si, :n, ci] = _incumbent(time_src[:n], self_fc=_self_fc(wl, ph, src_cfg))
 
         # Target P-core configs: predicted time = time_src / speedup
         for col in df.columns:
@@ -302,7 +389,7 @@ def _load_e_model_time_mat(wl, ph, e_model_pred_dir, configs, min_len, oracle_ti
 
         if src_cfg in configs:
             ci = configs.index(src_cfg)
-            e_model_time_mat[si, :n, ci] = time_src[:n]
+            e_model_time_mat[si, :n, ci] = _incumbent(time_src[:n], self_fc=_self_fc(wl, ph, src_cfg))
 
         for col in df.columns:
             if col.startswith("Speedup_E_") and "_vs_E_" in col:
@@ -344,7 +431,7 @@ def _load_cross_proc_time_mat(wl, ph, cross_proc_pred_dir, configs, min_len, ora
         # Set diagonal: src → src = oracle time
         if src_cfg in configs:
             src_ci = configs.index(src_cfg)
-            cross_proc_mat[si, :, src_ci] = oracle_time_mat[:min_len, src_ci]
+            cross_proc_mat[si, :, src_ci] = _incumbent(oracle_time_mat[:min_len, src_ci], self_fc=_self_fc(wl, ph, src_cfg))
 
         if not pred_file.exists():
             _note_fallback('cross_proc: missing file', wl, ph, pred_file.name)
@@ -478,7 +565,7 @@ def build_oracle_axis_mat(time_mat, configs, min_len, axis):
         src_core = src_cfg.split('_', 1)[0]
         if src_cfg in configs:
             ci = configs.index(src_cfg)
-            out[si, :, ci] = time_mat[:min_len, ci]
+            out[si, :, ci] = _incumbent(time_mat[:min_len, ci])
         for ci, tgt_cfg in enumerate(configs):
             tgt_core = tgt_cfg.split('_', 1)[0]
             same_core = (tgt_core == src_core)

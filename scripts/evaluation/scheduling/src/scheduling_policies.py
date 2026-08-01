@@ -32,6 +32,13 @@ def make_hetero_reactive_fallback_gate(gate_window=200, gate_stat='sum', gate_ma
             time_mat, energy_mat, configs, valid_configs, trans_lat, trans_nrg,
             forecast_time_mat, reactive_time_mat, _full_idx_list_fn, _src_cfg_idx,
             gate_window, metric, _return_actions, gate_stat=gate_stat, gate_margin=gate_margin)
+    # Without this the policy is the only one in the set that main.py cannot ask for its
+    # action sequence, which had three consequences: it fell through to the branch of
+    # _run_calls that uses the policy's own trace verbatim, so it was never charged the
+    # cross-cluster cache-warmup penalty that every policy it is compared against pays; it
+    # produced no trace stats, so it was silently missing from diagnostics.csv; and it could
+    # not be action-dumped. 17 of the other 18 hetero/isofreq factories set this.
+    policy.returns_actions = True
     return policy
 
 
@@ -42,8 +49,16 @@ def _last_core_local_idx(valid_configs, core_type):
     return positions[-1] if positions else 0
 
 
+def _core_types(valid_configs):
+    """(big, little) core prefixes present. x86 uses P (big) / E (little); ARM edge uses B / L.
+    Returns ('P','E') whenever no B/L config is present, so x86 behaviour is unchanged."""
+    prefixes = {c.split('_', 1)[0] for c in valid_configs}
+    return ('B', 'L') if ('B' in prefixes or 'L' in prefixes) else ('P', 'E')
+
+
 def _p_max_start_idx(idx_list, valid_configs):
-    return _last_core_local_idx(valid_configs, 'P')
+    big, _little = _core_types(valid_configs)
+    return _last_core_local_idx(valid_configs, big)
 
 
 def _norm_proxy(ctx):
@@ -66,8 +81,9 @@ def _ensure_pe_indices(state, ctx):
     if 'p_idx' not in state:
         valid = ctx['valid_configs']
         state = dict(state)
-        state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('P')])
-        state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith('E')])
+        _big, _lit = _core_types(valid)
+        state['p_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith(_big)])
+        state['e_idx'] = sorted([k for k, c in enumerate(valid) if c.startswith(_lit)])
     return state
 
 
@@ -94,8 +110,9 @@ def _decide_heuristic_micro_eas(ctx, state):
     if 'p_idx' not in state:
         valid = ctx['valid_configs']
         state = dict(state)
-        state['p_idx'] = [k for k, c in enumerate(valid) if c.startswith('P')]
-        state['e_idx'] = [k for k, c in enumerate(valid) if c.startswith('E')]
+        _big, _lit = _core_types(valid)
+        state['p_idx'] = [k for k, c in enumerate(valid) if c.startswith(_big)]
+        state['e_idx'] = [k for k, c in enumerate(valid) if c.startswith(_lit)]
         state['e_mid'] = state['e_idx'][len(state['e_idx']) // 2]
         state['p_max'] = state['p_idx'][-1]
         state['mig_nrg_cost'] = ctx['sub_nrg'][state['p_max'], state['e_mid']]
@@ -625,6 +642,19 @@ def make_greedy_oracle_hetero():
     )
 
 
+def make_reactive_oracle_hetero():
+    """Reactive across the full grid: repeat the config that was best LAST chunk, by true cost.
+    The no-model reactive baseline (sibling of make_greedy_oracle_hetero, which is perfect future);
+    used for platforms like RB5 that have measured traces but no trained translation model."""
+    return make_policy_from_idx_list(
+        idx_list_fn=_full_idx_list_fn,
+        temporal_mode='reactive',
+        decision_mode='greedy',
+        window_size=1,
+        start_idx_fn=_p_max_start_idx,
+    )
+
+
 # ==========================================
 # HETERO MODEL REACTIVE/ORACLE: full P+E space via CatBoost full_model_time_mat
 # full_model_time_mat: (8, n_chunks, n_configs) combining cross-freq P->P +
@@ -772,8 +802,9 @@ def make_thread_director_oracle(compute_thresh=0.60, headroom=1.25):
 
     def batch(proxy, sub_t, sub_e, sub_lat, sub_nrg, n, start_idx, vc, il):
         # oracle_heuristic: proxy_window[-1] = proxy_signal[i] for each chunk i
-        p_idx = np.array([k for k, c in enumerate(vc) if c.startswith('P')])
-        e_idx = np.array([k for k, c in enumerate(vc) if c.startswith('E')])
+        _big, _lit = _core_types(vc)
+        p_idx = np.array([k for k, c in enumerate(vc) if c.startswith(_big)])
+        e_idx = np.array([k for k, c in enumerate(vc) if c.startswith(_lit)])
         score = np.clip((proxy - 1.0) / 2.5, 0.0, 1.0)
         ratio = np.minimum(score * headroom, 1.0)
         n_p, n_e = len(p_idx), len(e_idx)
