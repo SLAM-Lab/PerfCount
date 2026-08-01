@@ -56,6 +56,7 @@ from shared_features import (
     load_fold_if_done,
     try_load_model,
     run_loocv,
+    run_general_model,
     print_summary,
     save_feature_importance,
     filter_excluded_benchmarks,
@@ -234,7 +235,7 @@ def run_freq_pair(src_map, tgt_map, src_freq, tgt_freq, src_cpu, tgt_cpu, args, 
         merged = prepare_bench_df(
             src_map[(src_freq, b)].copy(),
             tgt_map[(tgt_freq, b)].copy(),
-            target_key="cpu_cycles",
+            target_key=getattr(args, "target_key", "cpu_cycles"),
         )
         if merged is not None:
             bench_dfs[b] = merged
@@ -244,12 +245,15 @@ def run_freq_pair(src_map, tgt_map, src_freq, tgt_freq, src_cpu, tgt_cpu, args, 
               f"only {len(bench_dfs)} valid pairs after filtering.")
         return None
 
-    results = run_loocv(
-        bench_dfs,
-        process_fold,
-        args,
-        extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
-    )
+    if getattr(args, "mode", "loocv") == "loocv":
+        results = run_loocv(
+            bench_dfs,
+            process_fold,
+            args,
+            extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
+        )
+    else:
+        results = run_general_model(bench_dfs, args, freq_ratio, direction_dir, args.mode)
 
     if not results:
         return None

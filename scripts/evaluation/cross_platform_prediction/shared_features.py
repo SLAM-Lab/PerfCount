@@ -29,6 +29,18 @@ from joblib import Parallel, delayed
 # workload" does not mean "same amount of work" once frequency or core changes.
 UNSTABLE_DACAPO_WORKLOADS = ["cassandra", "tradebeans", "tradesoap", "h2o", "kafka"]
 
+# Clip bounds for the training target log(target_y / source_val). These must be
+# wide enough not to saturate legitimate ratios, and IDENTICAL everywhere, or a
+# model trained via one path is not comparable to one trained via another.
+# The binding case is cross-processor with a frequency mismatch: cpu0@4.0GHz ->
+# cpu16@1.0GHz has a median ratio of ~5.4 (p99 ~14, max ~40), so the old x86
+# bounds (0.2-5.0 cross-freq, 0.1-15.0 cross-proc) clipped up to 65% of samples
+# and destroyed the label. These are the wide bounds the arm trainers already
+# used, and they are symmetric in log space so the reverse direction
+# (reciprocal ratios, e.g. cpu16 -> cpu0) is covered equally.
+RATIO_CLIP_LO = 0.05
+RATIO_CLIP_HI = 50.0
+
 
 def add_feature_args(parser):
     """Attach the shared feature-toggle and model flags to an argparse parser."""
@@ -38,6 +50,16 @@ def add_feature_args(parser):
                    help="Restrict raw hardware counters used as features to exactly "
                         "this list (no counters are force-kept). "
                         "Default: use all available counters.")
+
+    g.add_argument("--target_key", choices=["cpu_cycles", "ref_cycles"], default="cpu_cycles",
+                   help="Quantity to predict on the target configuration. 'cpu_cycles' "
+                        "(default) is core cycles over a fixed instruction budget, i.e. CPI, "
+                        "and is collected on every platform. 'ref_cycles' tracks wall-clock "
+                        "time and exists only on the x86 machines and the Arm edge board; it "
+                        "is the target used by the scheduling study. Do not mix the two "
+                        "across platforms in one figure -- they are different problems: a "
+                        "copy baseline scores ~9%% MAPE under cpu_cycles and ~85%% under "
+                        "ref_cycles.")
 
     g.add_argument("--jobs", type=int, default=8,
                    help="Parallel joblib workers")
@@ -553,15 +575,24 @@ def run_loocv(bench_dfs, process_fold_fn, args, extra_kwargs=None):
 #     work unchanged and the numbers sit apples-to-apples next to the LOOCV row.
 # =============================================================================
 
-def _target_ratio_log(df):
-    """log(clip(target_y / source_val, 0.2, 5.0)) -- identical to process_fold."""
+def _target_ratio_log(df, lo=RATIO_CLIP_LO, hi=RATIO_CLIP_HI):
+    """log(clip(target_y / source_val, lo, hi)).
+
+    MUST use the same bounds as the caller's process_fold, or the general model
+    trains on a differently-encoded target than LOOCV and the comparison is
+    invalid. See RATIO_CLIP_LO/HI for why the bounds are wide."""
     src_clean = df["source_val"].replace(0, np.nan).fillna(1e-9)
     ratio = df["target_y"] / src_clean
-    return np.log(np.clip(ratio, 0.2, 5.0))
+    return np.log(np.clip(ratio, lo, hi))
 
 
-def run_general_model(bench_dfs, args, freq_ratio, out_dir, mode):
+def run_general_model(bench_dfs, args, freq_ratio, out_dir, mode, scale_mode="divide"):
     """Train a single general model and evaluate it per-workload.
+
+    scale_mode selects the frequency-scaling baseline so it matches the calling
+    trainer's process_fold: cross_freq/cross_proc use src/freq_ratio
+    ("divide"), cross_sys uses src*freq_ratio ("multiply"). Only affects the
+    *_scale baseline columns, not the ML metrics.
 
     Returns a list of per-workload result dicts (same schema as run_loocv);
     feature importances are attached to the first row only (they come from the
@@ -648,9 +679,11 @@ def run_general_model(bench_dfs, args, freq_ratio, out_dir, mode):
         y_true_cycles = tdf["target_y"].values
         pred_cycles = np.exp(model.predict(X_t)) * src_cycles
 
+        scale_pred = (src_cycles * freq_ratio if scale_mode == "multiply"
+                      else src_cycles / freq_ratio)
         m_ml    = compute_metrics(y_true_cycles, pred_cycles)
         m_copy  = compute_metrics(y_true_cycles, src_cycles)
-        m_scale = compute_metrics(y_true_cycles, src_cycles / freq_ratio)
+        m_scale = compute_metrics(y_true_cycles, scale_pred)
 
         row = {
             "bench":       name,

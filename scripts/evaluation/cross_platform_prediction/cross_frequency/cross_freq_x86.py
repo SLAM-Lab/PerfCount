@@ -37,6 +37,8 @@ from shared_features import (
     print_summary,
     save_feature_importance,
     filter_excluded_benchmarks,
+    RATIO_CLIP_LO,
+    RATIO_CLIP_HI,
 )
 
 
@@ -92,11 +94,11 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 
         src_clean   = train_full["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_train = train_full["target_y"] / src_clean
-        y_train_log = np.log(np.clip(ratio_train, 0.2, 5.0))
+        y_train_log = np.log(np.clip(ratio_train, RATIO_CLIP_LO, RATIO_CLIP_HI))
 
         src_clean_t = test_df["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_test  = test_df["target_y"] / src_clean_t
-        y_test_log  = np.log(np.clip(ratio_test, 0.2, 5.0))
+        y_test_log  = np.log(np.clip(ratio_test, RATIO_CLIP_LO, RATIO_CLIP_HI))
 
         cat_feats = cat_feature_names(args)
         model = try_load_model(out_dir, test_bench)
@@ -244,7 +246,7 @@ def run_freq_pair(data_map, src_freq, tgt_freq, args, out_dir):
         merged = prepare_bench_df(
             data_map[(src_freq, b)].copy(),
             data_map[(tgt_freq, b)].copy(),
-            target_key="ref_cycles",
+            target_key=getattr(args, "target_key", "cpu_cycles"),
         )
         if merged is not None:
             bench_dfs[b] = merged

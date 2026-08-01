@@ -58,9 +58,12 @@ from shared_features import (
     load_fold_if_done,
     try_load_model,
     run_loocv,
+    run_general_model,
     print_summary,
     save_feature_importance,
     filter_excluded_benchmarks,
+    RATIO_CLIP_LO,
+    RATIO_CLIP_HI,
 )
 
 
@@ -91,11 +94,11 @@ def process_fold(test_bench, train_dfs, test_df, args, freq_ratio=1.0, out_dir="
 
         src_clean   = train_full["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_train = train_full["target_y"] / src_clean
-        y_train_log = np.log(np.clip(ratio_train, 0.05, 50.0))
+        y_train_log = np.log(np.clip(ratio_train, RATIO_CLIP_LO, RATIO_CLIP_HI))
 
         src_clean_t = test_df["source_val"].replace(0, np.nan).fillna(1e-9)
         ratio_test  = test_df["target_y"] / src_clean_t
-        y_test_log  = np.log(np.clip(ratio_test, 0.05, 50.0))
+        y_test_log  = np.log(np.clip(ratio_test, RATIO_CLIP_LO, RATIO_CLIP_HI))
 
         cat_feats = cat_feature_names(args)
         model = try_load_model(out_dir, test_bench)
@@ -260,12 +263,18 @@ def run_freq_pair(src_map, tgt_map, src_freq, tgt_freq, src_label, tgt_label,
               f"only {len(bench_dfs)} valid pairs after filtering.")
         return None
 
-    results = run_loocv(
-        bench_dfs,
-        process_fold,
-        args,
-        extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
-    )
+    if getattr(args, "mode", "loocv") == "loocv":
+        results = run_loocv(
+            bench_dfs,
+            process_fold,
+            args,
+            extra_kwargs={"freq_ratio": freq_ratio, "out_dir": direction_dir},
+        )
+    else:
+        # scale_mode="multiply" matches this trainer's process_fold baseline
+        # (src_cycles * freq_ratio), unlike cross_freq/cross_proc which divide.
+        results = run_general_model(bench_dfs, args, freq_ratio, direction_dir,
+                                    args.mode, scale_mode="multiply")
 
     if not results:
         return None
@@ -308,9 +317,9 @@ def main():
     parser.add_argument("--suite", choices=["all", "spec_2017", "spec_2026", "dacapo_c2", "dacapo_c1"], default="spec_2017",
                         help="Benchmark suite to include: "
                              "'all', 'spec_2017' (default), 'spec_2026', 'dacapo_c2', or 'dacapo_c1'.")
-    parser.add_argument("--target_key", type=str, default="cpu_cycles",
-                        help="Counter to predict (default: cpu_cycles). "
-                             "Use ref_cycles for x86 cross-system.")
+    # --target_key is contributed by add_feature_args() below, shared with the
+    # cross-frequency and cross-processor trainers so every experiment names the
+    # prediction target the same way.
     parser.add_argument("--freq", type=str, default=None,
                         help="Run only the matched frequency pair at this value "
                              "(e.g. '1.0' to run only 1.0 GHz -> 1.0 GHz). "

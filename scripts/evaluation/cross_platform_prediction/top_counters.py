@@ -6,8 +6,16 @@ Aggregate feature importances from cross_freq models (full feature set) and
 report the top counters per processor × suite, averaged across all direction
 pairs (e.g. 1GHz→2GHz, 1GHz→3GHz, …).
 
-Excludes baseline counters (instructions, cpu_cycles, ref_cycles) and
-non-counter artifacts (sample_index) from the ranking before reporting top-N.
+Only sample_index (a non-counter artifact) is excluded from the ranking.
+Cycle counters compete like any other: `instructions`, `cpu_cycles`, and
+`ref_cycles` can and do land in the top-N, because the source-side value of
+the predicted quantity is genuinely the strongest single feature.
+
+That makes this the "best K counters to deploy" ranking. It is NOT the same
+question as "which non-trivial counters carry signal", which is what the
+paper's counter-importance table reports -- that one additionally drops the
+always-collected cycle/instruction events. Use --exclude in summary mode to
+reproduce the paper's view.
 
 Original usage (results_dir mode, called by data collection scripts):
   python top_counters.py --results_dir path/to/full --top_k 4

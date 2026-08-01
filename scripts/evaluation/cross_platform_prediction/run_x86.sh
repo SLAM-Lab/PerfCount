@@ -32,8 +32,10 @@
 #     DaCapo c1/c2 x full/pruned comparison figure.
 #   Cross-processor (SUITES_CP): dacapo_c1, spec_2017, spec_2026 all get
 #     full + top-4 + top-6. No dacapo_c2, no pruned variants.
-#   Cross-system (SUITES_CS): dacapo_c1, spec_2017, spec_2026 get a full
-#     run only (no top-4/top-6). No dacapo_c2, no pruned variants.
+#   Cross-system (SUITES_CS): dacapo_c1, spec_2017, spec_2026 get top-4 LOOCV
+#     plus both general models (general_insample / general_temporal), all on the
+#     same top-4 counters, selected from the existing full/ importance.
+#     No dacapo_c2, no pruned variants.
 
 set -euo pipefail
 
@@ -41,7 +43,29 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 TARGET="${1:-all}"
 
+# ---------------------------------------------------------------------------
+# Python interpreter. Override with PYTHON=/path/to/venv/bin/python if the
+# dependencies are not on the default python3 (e.g. you did not activate the
+# virtualenv). Checked up front, because a missing pandas would otherwise
+# surface much later as a misleading "No importance data" skip.
+# ---------------------------------------------------------------------------
+PY="${PYTHON:-python3}"
+if ! "$PY" -c 'import pandas, catboost' 2>/dev/null; then
+    echo "error: '$PY' cannot import pandas and catboost." >&2
+    echo "       Activate the virtualenv, or run:  PYTHON=/path/to/python $0 $*" >&2
+    echo "       Install with:  pip install -r requirements.txt" >&2
+    exit 1
+fi
+
+
 OUT_ROOT="${OUT_ROOT:-$REPO_ROOT/results/cross_platform}"
+
+# Prediction target for the x86 machines. ref_cycles is a real hardware
+# counter here (constant-rate, tracks wall-clock time), which is what the
+# released x86 results use. Override with TARGET_KEY=cpu_cycles to predict
+# core cycles instead -- comparable with the Arm desktop/server results but
+# not with the released x86 numbers.
+TARGET_KEY="${TARGET_KEY:-ref_cycles}"
 CF_X86="$SCRIPT_DIR/cross_frequency/cross_freq_x86.py"
 CP_X86="$SCRIPT_DIR/cross_processor/cross_proc_x86.py"
 CS="$SCRIPT_DIR/cross_system/cross_sys_arm.py"
@@ -78,7 +102,7 @@ run_topk() {
     fi
 
     local counters
-    counters=$(python3 "$TOP_COUNTERS" --results_dir "$full_dir" --top_k "$top_k" 2>/dev/null) || true
+    counters=$("$PY" "$TOP_COUNTERS" --results_dir "$full_dir" --top_k "$top_k" 2>/dev/null) || true
     if [ -z "$counters" ]; then
         echo "  [SKIP] No importance data in $full_dir"
         return
@@ -122,12 +146,23 @@ run_topk_and_general() {
     local full_dir="$1"
     shift
 
-    # top-4 counter set, selected once from the existing full importance and
-    # shared by all three runs below.
+    # Full-counter LOOCV pass. This has to run first: the top-4 set below is
+    # selected from its feature importances, so on a fresh OUT_ROOT every config
+    # would otherwise skip with "No importance data". Already-complete runs are
+    # detected by grand_summary.csv and skipped, so re-runs resume.
+    if [ -f "$full_dir/grand_summary.csv" ]; then
+        echo "  [SKIP] full pass already complete: $full_dir"
+    else
+        echo "  [full] -> $full_dir"
+        "$@" --out_dir "$full_dir" --jobs "$JOBS"
+    fi
+
+    # top-4 counter set, selected once from the full importance and shared by
+    # all three runs below.
     local counters
-    counters=$(python3 "$TOP_COUNTERS" --results_dir "$full_dir" --top_k 4 2>/dev/null) || true
+    counters=$("$PY" "$TOP_COUNTERS" --results_dir "$full_dir" --top_k 4 2>/dev/null) || true
     if [ -z "$counters" ]; then
-        echo "  [SKIP] No importance data in $full_dir (run a full pass first)"
+        echo "  [SKIP] No importance data in $full_dir (full pass produced none)"
         return
     fi
     echo "  top4 counters: $counters"
@@ -169,11 +204,11 @@ if [[ "$TARGET" == "x86_cf" || "$TARGET" == "all" ]]; then
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Freq | P-Core | $suite ==="
             "$(cf_runner "$suite")" "$OUT_ROOT/cross_freq/x86_${gran}/cpu0/$suite/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --target_cpu 0 --suite "$suite" --strict_loocv
+                "$PY" "$CF_X86" --data_dir "$data_dir" --target_cpu 0 --suite "$suite" --strict_loocv --target_key "$TARGET_KEY"
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Freq | E-Core | $suite ==="
             "$(cf_runner "$suite")" "$OUT_ROOT/cross_freq/x86_${gran}/cpu16/$suite/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --target_cpu 16 --suite "$suite" --strict_loocv
+                "$PY" "$CF_X86" --data_dir "$data_dir" --target_cpu 16 --suite "$suite" --strict_loocv --target_key "$TARGET_KEY"
         done
 
         # -------------------------------------------------------------------
@@ -189,11 +224,11 @@ if [[ "$TARGET" == "x86_cf" || "$TARGET" == "all" ]]; then
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Freq | P-Core | ${suite}_pruned ==="
             run_full_only "$OUT_ROOT/cross_freq/x86_${gran}/cpu0/${suite}_pruned/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --target_cpu 0 --suite "$suite" --strict_loocv --exclude_unstable_dacapo
+                "$PY" "$CF_X86" --data_dir "$data_dir" --target_cpu 0 --suite "$suite" --strict_loocv --exclude_unstable_dacapo --target_key "$TARGET_KEY"
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Freq | E-Core | ${suite}_pruned ==="
             run_full_only "$OUT_ROOT/cross_freq/x86_${gran}/cpu16/${suite}_pruned/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --target_cpu 16 --suite "$suite" --strict_loocv --exclude_unstable_dacapo
+                "$PY" "$CF_X86" --data_dir "$data_dir" --target_cpu 16 --suite "$suite" --strict_loocv --exclude_unstable_dacapo --target_key "$TARGET_KEY"
         done
     done
 
@@ -211,7 +246,7 @@ if [[ "$TARGET" == "x86_cf" || "$TARGET" == "all" ]]; then
             fi
             echo ""; echo "=== x86_server ($gran) | Cross-Freq | $suite ==="
             "$(cf_runner "$suite")" "$OUT_ROOT/cross_freq/x86_server_${gran}/$suite/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --suite "$suite" --strict_loocv
+                "$PY" "$CF_X86" --data_dir "$data_dir" --suite "$suite" --strict_loocv --target_key "$TARGET_KEY"
         done
 
         # -------------------------------------------------------------------
@@ -224,7 +259,7 @@ if [[ "$TARGET" == "x86_cf" || "$TARGET" == "all" ]]; then
             fi
             echo ""; echo "=== x86_server ($gran) | Cross-Freq | ${suite}_pruned ==="
             run_full_only "$OUT_ROOT/cross_freq/x86_server_${gran}/${suite}_pruned/full" \
-                python3 "$CF_X86" --data_dir "$data_dir" --suite "$suite" --strict_loocv --exclude_unstable_dacapo
+                "$PY" "$CF_X86" --data_dir "$data_dir" --suite "$suite" --strict_loocv --exclude_unstable_dacapo --target_key "$TARGET_KEY"
         done
     done
     fi  # end X86 SERVER (disabled)
@@ -248,11 +283,11 @@ if [[ "$TARGET" == "x86_cp" || "$TARGET" == "all" ]]; then
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Proc | P → E | $suite ==="
             run_topk_and_general "$OUT_ROOT/cross_proc/x86_${gran}/cpu0_to_cpu16/$suite/full" \
-                python3 "$CP_X86" --data_dir "$data_dir" --src_cpu 0 --tgt_cpu 16 --suite "$suite" --strict_loocv
+                "$PY" "$CP_X86" --data_dir "$data_dir" --src_cpu 0 --tgt_cpu 16 --suite "$suite" --strict_loocv --target_key "$TARGET_KEY"
 
             echo ""; echo "=== x86_desktop ($gran) | Cross-Proc | E → P | $suite ==="
             run_topk_and_general "$OUT_ROOT/cross_proc/x86_${gran}/cpu16_to_cpu0/$suite/full" \
-                python3 "$CP_X86" --data_dir "$data_dir" --src_cpu 16 --tgt_cpu 0 --suite "$suite" --strict_loocv
+                "$PY" "$CP_X86" --data_dir "$data_dir" --src_cpu 16 --tgt_cpu 0 --suite "$suite" --strict_loocv --target_key "$TARGET_KEY"
         done
     done
 
@@ -266,7 +301,7 @@ fi
 # already gives a 3x3 platform matrix per suite; sweeping every source x
 # target frequency combination on top of that is not needed yet. Drop
 # --freq 1.0 below to re-enable the full frequency sweep.
-if false && [[ "$TARGET" == "x86_cs" || "$TARGET" == "all" ]]; then  # cross-system disabled for now (remove `false &&` to re-enable)
+if [[ "$TARGET" == "x86_cs" || "$TARGET" == "all" ]]; then
 
     for gran in 10M; do  # 100M 1000M commented out for now -- 10M only
         SERVER="$REPO_ROOT/processed_data_${gran}/x86_server"
@@ -280,28 +315,28 @@ if false && [[ "$TARGET" == "x86_cs" || "$TARGET" == "all" ]]; then  # cross-sys
             fi
 
             echo ""; echo "=== x86 ($gran) | Cross-Sys | Server → P-Core | $suite ==="
-            run_full_only "$OUT/server_to_pcore/$suite/full" \
-                python3 "$CS" --src_data_dir "$SERVER" --tgt_data_dir "$DESKTOP" \
+            run_topk_and_general "$OUT/server_to_pcore/$suite/full" \
+                "$PY" "$CS" --src_data_dir "$SERVER" --tgt_data_dir "$DESKTOP" \
                     --tgt_cpu 0 --src_label server --tgt_label pcore \
-                    --suite "$suite" --target_key ref_cycles --freq 1.0
+                    --suite "$suite" --target_key "$TARGET_KEY" --freq 1.0
 
             echo ""; echo "=== x86 ($gran) | Cross-Sys | Server → E-Core | $suite ==="
-            run_full_only "$OUT/server_to_ecore/$suite/full" \
-                python3 "$CS" --src_data_dir "$SERVER" --tgt_data_dir "$DESKTOP" \
+            run_topk_and_general "$OUT/server_to_ecore/$suite/full" \
+                "$PY" "$CS" --src_data_dir "$SERVER" --tgt_data_dir "$DESKTOP" \
                     --tgt_cpu 16 --src_label server --tgt_label ecore \
-                    --suite "$suite" --target_key ref_cycles --freq 1.0
+                    --suite "$suite" --target_key "$TARGET_KEY" --freq 1.0
 
             echo ""; echo "=== x86 ($gran) | Cross-Sys | P-Core → Server | $suite ==="
-            run_full_only "$OUT/pcore_to_server/$suite/full" \
-                python3 "$CS" --src_data_dir "$DESKTOP" --tgt_data_dir "$SERVER" \
+            run_topk_and_general "$OUT/pcore_to_server/$suite/full" \
+                "$PY" "$CS" --src_data_dir "$DESKTOP" --tgt_data_dir "$SERVER" \
                     --src_cpu 0 --src_label pcore --tgt_label server \
-                    --suite "$suite" --target_key ref_cycles --freq 1.0
+                    --suite "$suite" --target_key "$TARGET_KEY" --freq 1.0
 
             echo ""; echo "=== x86 ($gran) | Cross-Sys | E-Core → Server | $suite ==="
-            run_full_only "$OUT/ecore_to_server/$suite/full" \
-                python3 "$CS" --src_data_dir "$DESKTOP" --tgt_data_dir "$SERVER" \
+            run_topk_and_general "$OUT/ecore_to_server/$suite/full" \
+                "$PY" "$CS" --src_data_dir "$DESKTOP" --tgt_data_dir "$SERVER" \
                     --src_cpu 16 --src_label ecore --tgt_label server \
-                    --suite "$suite" --target_key ref_cycles --freq 1.0
+                    --suite "$suite" --target_key "$TARGET_KEY" --freq 1.0
         done
     done
 
