@@ -99,6 +99,22 @@ def predict_call(model, mdl, X, backend, tmp_dir, tag):
     return base.onnx_call(path, X)
 
 
+def classify_call(gmm, row, n_cnt, backend, tmp_dir, tag):
+    """Phase classification (GMM predict) in the SAME runtime as the forecaster.
+    Under native, sklearn's predict() is dominated by Python call overhead
+    (~130 us for a 5-component 4-D mixture whose math is ~1 us), so with
+    compiled forecasters the classifier is compiled too for a fair comparison."""
+    if backend == "native":
+        return lambda: gmm.predict(row)
+    from skl2onnx import convert_sklearn
+    from skl2onnx.common.data_types import FloatTensorType
+    path = os.path.join(tmp_dir, f"{tag}.onnx")
+    onx = convert_sklearn(gmm, initial_types=[("X", FloatTensorType([None, n_cnt]))])
+    with open(path, "wb") as f:
+        f.write(onx.SerializeToString())
+    return base.onnx_call(path, row.astype(np.float32))
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -140,7 +156,7 @@ def main():
                             row = np.ones((1, n_cnt), dtype=np.float64)
                             fwd_g = predict_call(model, g, X, backend, tmp_dir, "g")
                             fwd_p = predict_call(model, p, X, backend, tmp_dir, "p")
-                            clf = lambda: gmm.predict(row)
+                            clf = classify_call(gmm, row, n_cnt, backend, tmp_dir, "gmm")
                             aware = lambda: (clf(), fwd_p())
                             un = base._run(fwd_g, args.reps, args.warmup)
                             cl = base._run(clf, args.reps, args.warmup)

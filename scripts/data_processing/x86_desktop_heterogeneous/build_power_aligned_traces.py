@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
 build_power_aligned_traces.py -- build per-block power columns for the
-SPEC CPU2017 my_run=100 power-trace collection.
+per-sample power-trace collection (my_run=101 by default, set with --my_run).
 
-For each cpu_<cpu>_<freq>GHz_<bench>_10000000_100_<phase>.out in --power_dir,
+For each cpu_<cpu>_<freq>GHz_<bench>_10000000_<my_run>_<phase>.out in --power_dir,
 aligns the perf-record instruction/cycle blocks with the RAPL power trace
 (using the helpers from analyze_block_granularity.py), computes idle-relative
 and idle-offset ("total") power columns, and writes the result.
@@ -40,8 +40,12 @@ from analyze_block_granularity import (
 )
 from process_raw_data import merge_split_blocks, repair_dropped_samples
 
-FILENAME_RE = re.compile(
-    r"cpu_(?P<cpu>\d+)_(?P<freq>[\d.]+)GHz_(?P<bench>.+)_10000000_100_(?P<phase>\d+)\.out")
+def make_filename_re(my_run):
+    return re.compile(
+        rf"cpu_(?P<cpu>\d+)_(?P<freq>[\d.]+)GHz_(?P<bench>.+)_10000000_{my_run}_(?P<phase>\d+)\.out")
+
+
+FILENAME_RE = make_filename_re(101)  # default my_run; overridden by --my_run in main()
 
 ROLLING_N = 10
 MATCH_RATE_WARN_THRESHOLD = 0.90
@@ -57,13 +61,13 @@ def check_block_correction(df_perf):
     return len(corrected) != len(df_perf)
 
 
-def process_file(out_file, power_dir, aligned_dir, output_dir):
+def process_file(out_file, power_dir, aligned_dir, output_dir, filename_re=FILENAME_RE):
     """Process a single .out file. Returns (status, messages, out_name)
     where status is one of 'written', 'skipped', and messages is a list
     of log lines to print."""
     msgs = []
     fname = os.path.basename(out_file)
-    match = FILENAME_RE.match(fname)
+    match = filename_re.match(fname)
     if not match:
         msgs.append(f"  [SKIP] {fname}: doesn't match naming convention")
         return 'skipped', msgs, None
@@ -163,6 +167,9 @@ def process_file(out_file, power_dir, aligned_dir, output_dir):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--power_dir', default='power_data_10M/x86_desktop_heterogeneous')
+    parser.add_argument('--my_run', default='101',
+                         help="power-collection run id in the trace filenames "
+                              "(cpu_..._10000000_<my_run>_<phase>.out); default 101")
     parser.add_argument('--aligned_dir', default=None,
                          help="if given, merge power columns into existing aligned_*.csv "
                               "traces here instead of writing standalone files")
@@ -173,8 +180,11 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
-    out_files = sorted(glob.glob(os.path.join(args.power_dir, '**', 'cpu_*_*GHz_*_10000000_100_*.out'), recursive=True))
-    print(f"Found {len(out_files)} my_run=100 .out files in {args.power_dir}")
+    filename_re = make_filename_re(args.my_run)
+    out_files = sorted(glob.glob(
+        os.path.join(args.power_dir, '**', f'cpu_*_*GHz_*_10000000_{args.my_run}_*.out'),
+        recursive=True))
+    print(f"Found {len(out_files)} my_run={args.my_run} .out files in {args.power_dir}")
 
     n_written = 0
     n_skipped = 0
@@ -185,7 +195,7 @@ def main():
         with ProcessPoolExecutor(max_workers=args.workers) as executor:
             futures = {
                 executor.submit(process_file, out_file, args.power_dir,
-                                 args.aligned_dir, args.output_dir): out_file
+                                 args.aligned_dir, args.output_dir, filename_re): out_file
                 for out_file in out_files
             }
             for future in as_completed(futures):
@@ -203,7 +213,7 @@ def main():
     else:
         for out_file in out_files:
             status, msgs, out_name = process_file(out_file, args.power_dir,
-                                                    args.aligned_dir, args.output_dir)
+                                                    args.aligned_dir, args.output_dir, filename_re)
             for m in msgs:
                 print(m)
             if status.startswith('written'):

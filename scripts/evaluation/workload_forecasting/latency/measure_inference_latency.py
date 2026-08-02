@@ -253,7 +253,18 @@ def convert_keras_to_onnx(model, X, path):
     import tf2onnx
     import tensorflow as tf
     spec = (tf.TensorSpec([None] + list(X.shape[1:]), tf.float32, name="input"),)
-    tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=path)
+    try:
+        tf2onnx.convert.from_keras(model, input_signature=spec, opset=13, output_path=path)
+    except (KeyError, ValueError):
+        # Keras 3 keras_tensor models (e.g. LSTM built with a fixed batch dim) can
+        # trip from_keras's tensor-name lookup. Re-trace the model through a
+        # flexible-batch tf.function and convert that instead.
+        @tf.autograph.experimental.do_not_convert
+        def _forward(x):
+            return model(x, training=False)
+        fn = tf.function(_forward, input_signature=list(spec))
+        tf2onnx.convert.from_function(fn, input_signature=list(spec),
+                                      opset=13, output_path=path)
 
 
 def onnx_call(onnx_path, X):
